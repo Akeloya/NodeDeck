@@ -1,0 +1,18 @@
+[
+  { "protocolVersion": "0.1", "requestId": "r1", "type": "protocol.hello", "payload": { "supportedVersions": ["0.1"], "client": { "id": "phone-1", "name": "Android" } } },
+  { "protocolVersion": "0.1", "requestId": "r1", "type": "protocol.hello", "result": { "selectedVersion": "0.1", "gatewayId": "warehouse-1", "authMethods": ["sharedSecret"], "maxMessageBytes": 262144 } },
+  { "protocolVersion": "0.1", "requestId": "r2", "type": "auth.login", "payload": { "method": "sharedSecret", "secret": "example-only-secret" } },
+  { "protocolVersion": "0.1", "requestId": "r2", "type": "auth.login", "result": { "accessToken": "example-session-token", "expiresAt": "2026-11-02T17:00:00Z", "subjectId": "operator" } },
+  { "protocolVersion": "0.1", "requestId": "r3", "type": "capabilities.get", "accessToken": "example-session-token", "payload": {} },
+  { "protocolVersion": "0.1", "requestId": "r4", "type": "ui.get", "accessToken": "example-session-token", "payload": {} },
+  { "protocolVersion": "0.1", "requestId": "r5", "type": "command.invoke", "accessToken": "example-session-token", "payload": { "commandId": "workspace.open", "arguments": { "screen": "inventory" }, "uiRevision": "ui-1" } },
+  { "protocolVersion": "0.1", "requestId": "r5", "type": "command.invoke", "result": { "status": "completed", "output": {} } },
+  { "protocolVersion": "0.1", "requestId": "r6", "type": "command.invoke", "accessToken": "example-session-token", "payload": { "commandId": "inventory.lookup", "arguments": { "barcode": "4601234567890", "quantity": 2 }, "uiRevision": "ui-1" } },
+  { "protocolVersion": "0.1", "requestId": "r6", "type": "command.invoke", "result": { "status": "accepted", "operationToken": "example-operation-token", "pollAfterMs": 500 } },
+  { "protocolVersion": "0.1", "requestId": "r7", "type": "operation.get", "accessToken": "example-session-token", "payload": { "operationToken": "example-operation-token" } },
+  { "protocolVersion": "0.1", "requestId": "r7", "type": "operation.get", "result": { "operationToken": "example-operation-token", "status": "running", "progress": { "value": 0.5, "message": "Searching" }, "pollAfterMs": 500 } },
+  { "protocolVersion": "0.1", "requestId": "r8", "type": "operation.get", "accessToken": "example-session-token", "payload": { "operationToken": "example-operation-token" } },
+  { "protocolVersion": "0.1", "requestId": "r8", "type": "operation.get", "result": { "operationToken": "example-operation-token", "status": "completed", "output": { "found": true } } },
+  { "protocolVersion": "0.1", "requestId": "r9", "type": "command.invoke", "accessToken": "example-session-token", "payload": { "commandId": "inventory.lookup", "arguments": { "barcode": "4601234567890", "quantity": 0 } } },
+  { "protocolVersion": "0.1", "requestId": "r9", "type": "command.invoke", "result": { "status": "rejected", "error": { "code": "invalid_arguments", "message": "Quantity must be at least 1", "retryable": false, "details": { "parameter": "quantity" } } } }
+]

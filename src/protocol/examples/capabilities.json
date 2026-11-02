@@ -1,0 +1,46 @@
+{
+  "gateway": { "id": "warehouse-1", "name": "Warehouse", "description": "Workstation control" },
+  "revision": "cap-1",
+  "features": ["commands", "operations.poll", "ui", "resources.read", "endpoints"],
+  "limits": {
+    "maxMessageBytes": 262144,
+    "commandResponseTimeoutMs": 1000,
+    "minPollIntervalMs": 500,
+    "operationRetentionMs": 86400000,
+    "deduplicationWindowMs": 86400000,
+    "deduplicationPersistent": false
+  },
+  "commands": [
+    {
+      "id": "workspace.open",
+      "title": "Open workstation",
+      "description": "Switches the screen in the controlled application",
+      "parameters": { "type": "object", "properties": { "screen": { "type": "string", "enum": ["inventory"] } }, "required": ["screen"], "additionalProperties": false },
+      "result": { "type": "object", "properties": {}, "required": [], "additionalProperties": false },
+      "availability": { "enabled": true }
+    },
+    {
+      "id": "inventory.lookup",
+      "title": "Find item",
+      "description": "Find an item by barcode with the specified quantity",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "barcode": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "quantity": { "type": "integer", "minimum": 1, "maximum": 1000 }
+        },
+        "required": ["barcode", "quantity"],
+        "additionalProperties": false
+      },
+      "result": { "type": "object", "properties": { "found": { "type": "boolean" } }, "required": ["found"], "additionalProperties": false },
+      "availability": { "enabled": true }
+    }
+  ],
+  "resources": [
+    { "id": "warehouse-logo", "mediaType": "image/png", "uri": "/resources/logo.png", "auth": { "mode": "gatewayBearer" }, "width": 128, "height": 128 }
+  ],
+  "endpoints": [
+    { "id": "camera-1", "kind": "camera", "title": "Warehouse camera", "uri": "rtsp://camera.local/live", "protocol": "rtsp", "auth": { "mode": "external" } },
+    { "id": "support-chat", "kind": "chat", "title": "Operator chat", "uri": "https://chat.example.invalid/api", "protocol": "https", "contract": "example.operator-chat/1", "auth": { "mode": "external" } }
+  ]
+}

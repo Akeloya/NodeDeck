@@ -1,0 +1,89 @@
+{
+  "revision": "ui-1",
+  "capabilitiesRevision": "cap-1",
+  "startScreenId": "home",
+  "screens": [
+    {
+      "id": "home",
+      "title": "Home",
+      "description": "Select a workstation and additional features",
+      "presentation": { "kind": "page" },
+      "root": {
+        "id": "home-layout", "type": "container", "layout": { "kind": "wrap", "itemWidth": 180, "gap": 12, "padding": 16 },
+        "children": [
+          { "id": "logo", "type": "image", "resourceId": "warehouse-logo", "alt": "Warehouse" },
+          { "id": "open-inventory", "type": "button", "label": "Inventory", "action": { "kind": "navigate", "screenId": "inventory" } },
+          { "id": "open-menu", "type": "button", "label": "Menu", "action": { "kind": "navigate", "screenId": "menu" } },
+          { "id": "open-tools", "type": "button", "label": "Tools", "action": { "kind": "navigate", "screenId": "tools" } }
+        ]
+      }
+    },
+    {
+      "id": "inventory",
+      "title": "Inventory",
+      "description": "Scanning and lookup",
+      "presentation": { "kind": "page" },
+      "enterCommand": {
+        "commandId": "workspace.open",
+        "arguments": { "screen": { "source": "literal", "value": "inventory" } },
+        "wait": { "block": "application", "timeoutMs": 10000 }
+      },
+      "root": {
+        "id": "inventory-layout", "type": "container", "layout": { "kind": "vertical", "gap": 8, "padding": 16 },
+        "children": [
+          { "id": "barcode", "type": "textInput", "label": "Barcode", "initialValue": "", "placeholder": "Scan or enter a code" },
+          { "id": "quantity", "type": "numberInput", "label": "Quantity", "initialValue": 1, "minimum": 1, "maximum": 1000, "step": 1 },
+          {
+            "id": "scan", "type": "button", "label": "Scan and find",
+            "action": {
+              "kind": "scanBarcode", "targetControlId": "barcode", "formats": ["ean13", "code128", "qr"],
+              "then": {
+                "kind": "invoke", "commandId": "inventory.lookup",
+                "arguments": {
+                  "barcode": { "source": "control", "controlId": "barcode", "property": "value" },
+                  "quantity": { "source": "control", "controlId": "quantity", "property": "value" }
+                },
+                "wait": { "block": "screen", "timeoutMs": 30000 }
+              }
+            }
+          },
+          {
+            "id": "lookup", "type": "button", "label": "Find",
+            "action": {
+              "kind": "invoke", "commandId": "inventory.lookup",
+              "arguments": {
+                "barcode": { "source": "control", "controlId": "barcode", "property": "value" },
+                "quantity": { "source": "control", "controlId": "quantity", "property": "value" }
+              },
+              "wait": { "block": "screen", "timeoutMs": 30000 }
+            }
+          },
+          { "id": "back", "type": "button", "label": "Back", "action": { "kind": "back" } }
+        ]
+      }
+    },
+    {
+      "id": "menu", "title": "Menu", "description": "Left drawer",
+      "presentation": { "kind": "drawer", "side": "left", "width": 280 },
+      "root": {
+        "id": "menu-layout", "type": "container", "layout": { "kind": "vertical", "gap": 8 },
+        "children": [
+          { "id": "chat", "type": "button", "label": "Chat", "action": { "kind": "openEndpoint", "endpointId": "support-chat" } },
+          { "id": "close", "type": "button", "label": "Close", "action": { "kind": "closeDrawer" } }
+        ]
+      }
+    },
+    {
+      "id": "tools", "title": "Tools", "description": "Right drawer with absolute layout",
+      "presentation": { "kind": "drawer", "side": "right", "width": 320 },
+      "root": {
+        "id": "tools-layout", "type": "container", "layout": { "kind": "absolute", "width": 320, "height": 180 },
+        "children": [
+          { "id": "heading", "type": "label", "text": "Monitoring", "bounds": { "x": 16, "y": 16, "width": 288, "height": 32 } },
+          { "id": "camera", "type": "button", "label": "Camera", "bounds": { "x": 16, "y": 60, "width": 138, "height": 48 }, "action": { "kind": "openEndpoint", "endpointId": "camera-1" } },
+          { "id": "close", "type": "button", "label": "Close", "bounds": { "x": 166, "y": 60, "width": 138, "height": 48 }, "action": { "kind": "closeDrawer" } }
+        ]
+      }
+    }
+  ]
+}

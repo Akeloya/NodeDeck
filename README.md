@@ -17,6 +17,11 @@ Gateways can connect to other gateways, allowing distributed systems built with 
 - Gateways can be combined with each other.
 - Any compatible client can display the screens they provide.
 
+## Gateway protocol
+
+See [src/protocol/README.md](src/protocol/README.md) for the draft gateway protocol,
+authentication, capabilities, UI schemas, and command execution examples.
+
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for the development plan,
