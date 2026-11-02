@@ -426,3 +426,66 @@ FodyWeavers.xsd
 
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
+
+# ==========================================
+# ESP-IDF
+# ==========================================
+
+**/build/
+**/sdkconfig
+**/sdkconfig.old
+
+# Keep shared ESP-IDF defaults in Git
+!**/sdkconfig.defaults
+!**/sdkconfig.defaults.*
+
+# ==========================================
+# Android / Gradle
+# ==========================================
+
+.gradle/
+**/.cxx/
+**/.externalNativeBuild/
+**/captures/
+local.properties
+*.apk
+*.aab
+*.hprof
+
+# Android signing files
+*.jks
+*.keystore
+
+# ==========================================
+# Web editor / Node.js
+# ==========================================
+
+node_modules/
+dist/
+.next/
+.nuxt/
+coverage/
+
+# ==========================================
+# Local configuration and secrets
+# ==========================================
+
+.env
+.env.*
+!.env.example
+
+secrets.json
+*.pfx
+*.p12
+*.pem
+*.key
+
+# ==========================================
+# Temporary files
+# ==========================================
+
+*.tmp
+*.bak
+*.log
+.DS_Store
+Thumbs.db
