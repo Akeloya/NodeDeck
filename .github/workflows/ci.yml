@@ -1,0 +1,39 @@
+name: Build and test
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  sdk:
+    name: Windows SDK and tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build console example and Windows BLE transport
+        run: dotnet build src/examples/dotnet-console/NodeDeck.Console -c Release
+      - name: Build and run NUnit tests
+        run: dotnet test src/sdk/dotnet/NodeDeck.Tests -c Release
+
+  android:
+    name: Android client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install MAUI Android workload
+        run: dotnet workload install maui-android
+      - name: Install required Android SDK components
+        run: dotnet build src/apps/android/NodeDeckClient -t:InstallAndroidDependencies -f net10.0-android -p:AcceptAndroidSdkLicenses=True
+      - name: Build Android client
+        run: dotnet build src/apps/android/NodeDeckClient -c Release -f net10.0-android
