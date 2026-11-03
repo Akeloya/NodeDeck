@@ -18,9 +18,11 @@
             <Entry x:Name="SecretEntry" Text="nodedeck-dev" Placeholder="Shared secret" IsPassword="True" />
             <Button x:Name="ConnectButton" Text="Connect" Clicked="OnConnectClicked" />
             <Entry x:Name="MessageEntry" Text="Hello from phone" Placeholder="Command message" />
-            <Button Text="Say hello" Clicked="OnCommandClicked" CommandParameter="phone.hello" />
-            <Button Text="Get status" Clicked="OnCommandClicked" CommandParameter="phone.status" />
-            <Button Text="Run action" Clicked="OnCommandClicked" CommandParameter="phone.action" />
+            <VerticalStackLayout x:Name="CommandButtons" IsEnabled="False" Spacing="14">
+                <Button Text="Say hello" Clicked="OnCommandClicked" CommandParameter="phone.hello" />
+                <Button Text="Get status" Clicked="OnCommandClicked" CommandParameter="phone.status" />
+                <Button Text="Run action" Clicked="OnCommandClicked" CommandParameter="phone.action" />
+            </VerticalStackLayout>
             <Label x:Name="StatusLabel" Text="Disconnected" />
             <Label x:Name="ResultLabel" Text="" LineBreakMode="WordWrap" />
         </VerticalStackLayout>

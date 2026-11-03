@@ -65,6 +65,7 @@ public sealed class GatewayServer : IAsyncDisposable
 
     public string GatewayId => _gatewayId;
     public int? TcpPort => (_listener as TcpJsonServer)?.Port;
+    public event Action? ClientLoggedOut;
     public event Action<string, string, JsonElement>? CommandReceived;
 
     public void Start()
@@ -144,7 +145,11 @@ public sealed class GatewayServer : IAsyncDisposable
                         using var resultDoc = JsonDocument.Parse(response.Result!.Value.GetRawText());
                         token = resultDoc.RootElement.GetProperty("accessToken").GetString();
                     }
-                    if (request.Type == "auth.logout" && response.Error is null) token = null;
+                    if (request.Type == "auth.logout" && response.Error is null)
+                    {
+                        token = null;
+                        ClientLoggedOut?.Invoke();
+                    }
                 }
                 catch (ProtocolValidationException ex)
                 {

@@ -48,7 +48,7 @@ public partial class MainPage : ContentPage
     {
         await RunBusyAsync(async () =>
         {
-            StatusLabel.Text = string.Empty;
+            CommandButtons.IsEnabled = false;
             await DisconnectAsync();
             if (TransportPicker.SelectedIndex == 0)
             {
@@ -70,6 +70,7 @@ public partial class MainPage : ContentPage
             }
             var capabilities = await _client.GetCapabilitiesAsync();
             var count = capabilities.GetProperty("commands").GetArrayLength();
+            CommandButtons.IsEnabled = true;
             StatusLabel.Text = $"Connected. Gateway publishes {count} command(s).";
         });
     }
@@ -106,6 +107,7 @@ public partial class MainPage : ContentPage
 
     private async Task DisconnectAsync()
     {
+        CommandButtons.IsEnabled = false;
         if (_client is null) return;
         await _client.DisposeAsync();
         _client = null;

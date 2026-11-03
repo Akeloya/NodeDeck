@@ -97,7 +97,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         try
         {
             await callback.Connected.Task.WaitAsync(TimeSpan.FromSeconds(WaitForGatewaySeconds), cancellationToken);
-            Diagnostic?.Invoke("Computer connected over GATT.");
+            Diagnostic?.Invoke("BLE notifications enabled. Connecting to gateway…");
             return connection;
         }
         catch (TimeoutException ex)
@@ -241,7 +241,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
             if (newState == ProfileState.Connected && device is not null)
             {
                 Central = device;
-                Connected.TrySetResult(true);
+                Diagnostic?.Invoke("Computer connected over GATT. Waiting for notification subscription…");
             }
             if (newState == ProfileState.Disconnected)
             {
@@ -253,12 +253,16 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         public override void OnDescriptorWriteRequest(BluetoothDevice? device, int requestId, BluetoothGattDescriptor? descriptor,
             bool preparedWrite, bool responseNeeded, int offset, byte[]? value)
         {
-            if (device is not null && descriptor?.Characteristic?.Uuid == Tx?.Uuid)
+            if (device is null) return;
+            var subscribed = !preparedWrite && offset == 0 && value is [1, 0]
+                && descriptor?.Characteristic?.Uuid?.Equals(Tx?.Uuid) == true;
+            if (responseNeeded)
+                Connection?._server.SendResponse(device, requestId, GattStatus.Success, offset, value ?? []);
+            if (subscribed)
             {
                 Central = device;
+                Connected.TrySetResult(true);
             }
-            if (responseNeeded && device is not null)
-                Connection?._server.SendResponse(device, requestId, GattStatus.Success, offset, value ?? []);
         }
 
         public override void OnCharacteristicWriteRequest(BluetoothDevice? device, int requestId, BluetoothGattCharacteristic? characteristic,

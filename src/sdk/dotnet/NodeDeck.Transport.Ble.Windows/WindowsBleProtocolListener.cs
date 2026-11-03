@@ -69,12 +69,21 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
 
             var tx = txResult.Characteristics[0];
             var rx = rxResult.Characteristics[0];
-            var cccd = await tx.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
-            Diagnostic?.Invoke($"GATT notification subscription result: {cccd}.");
-            if (cccd != GattCommunicationStatus.Success) throw new IOException($"Could not subscribe to phone BLE notifications: {cccd}.");
-
-            _connection = new WindowsBleProtocolConnection(device, rx, tx);
-            tx.ValueChanged += _connection.OnValueChanged;
+            var connection = new WindowsBleProtocolConnection(device, rx, tx);
+            tx.ValueChanged += connection.OnValueChanged;
+            try
+            {
+                var cccd = await tx.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+                Diagnostic?.Invoke($"GATT notification subscription result: {cccd}.");
+                if (cccd != GattCommunicationStatus.Success) throw new IOException($"Could not subscribe to phone BLE notifications: {cccd}.");
+            }
+            catch
+            {
+                await connection.DisposeAsync();
+                throw;
+            }
+            connection.MonitorDisconnection(message => Diagnostic?.Invoke(message));
+            _connection = connection;
             _watcher?.Stop();
             _connections.Writer.TryWrite(_connection);
             _ready.TrySetResult();
@@ -117,6 +126,22 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
             _device = device;
             _rx = rx;
             _tx = tx;
+        }
+
+        private Action<string>? _diagnostic;
+        private int _disposed;
+
+        public void MonitorDisconnection(Action<string> diagnostic)
+        {
+            _diagnostic = diagnostic;
+            _device.ConnectionStatusChanged += OnConnectionStatusChanged;
+            OnConnectionStatusChanged(_device, null);
+        }
+
+        private void OnConnectionStatusChanged(BluetoothLEDevice device, object? args)
+        {
+            if (device.ConnectionStatus == BluetoothConnectionStatus.Disconnected && _incoming.Writer.TryComplete())
+                _diagnostic?.Invoke("Bluetooth LE connection to phone lost.");
         }
 
         public int MaxMessageBytes => _maxMessageBytes;
@@ -182,13 +207,17 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
 
         public async Task<T?> ReceiveAsync<T>(CancellationToken cancellationToken = default)
         {
+            if (!await _incoming.Reader.WaitToReadAsync(cancellationToken)) return default;
             var frame = await _incoming.Reader.ReadAsync(cancellationToken);
             return ProtocolJson.Deserialize<T>(frame, _maxMessageBytes);
         }
 
         public ValueTask DisposeAsync()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return ValueTask.CompletedTask;
             _incoming.Writer.TryComplete();
+            _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
+            _tx.ValueChanged -= OnValueChanged;
             _frame.Dispose();
             _writeLock.Dispose();
             _device.Dispose();

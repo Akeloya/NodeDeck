@@ -84,6 +84,7 @@ namespace NodeDeck.Console
             var gateway = bleListener is null ? builder.Build(bindAddress, port) : builder.Build(bleListener);
             await using (gateway.ConfigureAwait(false))
             {
+                gateway.ClientLoggedOut += () => System.Console.WriteLine("Client logged out. Session ended.");
                 gateway.Start();
                 if (transport == "tcp")
                     System.Console.WriteLine($"Gateway '{gateway.GatewayId}' listening on TCP {bindAddress}:{gateway.TcpPort}");
