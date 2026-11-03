@@ -1,7 +1,7 @@
 using System.Collections.Frozen;
 using System.Text.Json;
 
-namespace NodeDeck.Protocol;
+namespace NodeDeck.Core.Protocol;
 
 public static class ProtocolConstants
 {

@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
-using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using NodeDeck.Protocol;
+using NodeDeck.Core.Protocol;
+using NodeDeck.Core.Transport;
 using NodeDeck.Transport.Tcp;
 
 namespace NodeDeck.Gateway;
@@ -24,9 +24,6 @@ public sealed class GatewayBuilder(string gatewayId, string name, string sharedS
         _commands.Add(new GatewayCommand(definition, handler));
         return this;
     }
-    public GatewayServer Build(IPAddress address, int port, string? description = null) =>
-        new(gatewayId, name, description, sharedSecret, _commands, new TcpJsonServer(address, port, 262144));
-
     public GatewayServer Build(IProtocolMessageListener listener, string? description = null) =>
         new(gatewayId, name, description, sharedSecret, _commands, listener);
 }

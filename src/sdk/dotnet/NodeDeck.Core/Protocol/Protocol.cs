@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace NodeDeck.Protocol;
+namespace NodeDeck.Core.Protocol;
 
 public static class ProtocolJson
 {

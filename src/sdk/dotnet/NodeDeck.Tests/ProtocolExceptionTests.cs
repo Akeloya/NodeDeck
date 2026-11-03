@@ -1,5 +1,5 @@
 using System.Text.Json;
-using NodeDeck.Protocol;
+using NodeDeck.Core.Protocol;
 using NUnit.Framework;
 
 namespace NodeDeck.Tests;

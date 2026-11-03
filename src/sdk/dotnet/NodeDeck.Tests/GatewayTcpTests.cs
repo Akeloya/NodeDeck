@@ -3,9 +3,9 @@ using System.Text.Json;
 using NUnit.Framework;
 using NodeDeck.Client;
 using NodeDeck.Gateway;
-using NodeDeck.Protocol;
+using NodeDeck.Core.Protocol;
 using NodeDeck.Transport.Tcp;
-using ProtocolValueType = NodeDeck.Protocol.ValueType;
+using ProtocolValueType = NodeDeck.Core.Protocol.ValueType;
 
 namespace NodeDeck.Tests;
 
@@ -97,7 +97,7 @@ public class GatewayTcpTests
             {
                 Interlocked.Increment(ref executions);
                 return ValueTask.FromResult(JsonSerializer.SerializeToElement(new { echo = arguments.GetProperty("value").GetString() }));
-            }).Build(IPAddress.Loopback, 0);
+            }).Build(new TcpJsonServer(new TcpListenerSettings { IPAddress = "127.0.0.1", Port = 0 }));
     }
 
     private static ProtocolRequest Request<T>(string id, string type, T payload) =>

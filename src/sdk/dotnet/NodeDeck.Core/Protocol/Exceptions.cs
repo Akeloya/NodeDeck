@@ -1,4 +1,4 @@
-namespace NodeDeck.Protocol;
+namespace NodeDeck.Core.Protocol;
 
 public abstract class NodeDeckProtocolException(string code, string message, Exception? innerException = null)
     : Exception(message, innerException)

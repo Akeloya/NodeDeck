@@ -1,4 +1,4 @@
-namespace NodeDeck.Protocol;
+namespace NodeDeck.Core.Transport;
 
 /// <summary>Exchanges complete NodeDeck messages over a connected transport.</summary>
 public interface IProtocolMessageConnection : IAsyncDisposable

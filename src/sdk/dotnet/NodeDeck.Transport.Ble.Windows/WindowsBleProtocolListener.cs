@@ -1,5 +1,8 @@
 using System.Threading.Channels;
-using NodeDeck.Protocol;
+using NodeDeck.Core.Logging;
+using NodeDeck.Core.Protocol;
+using NodeDeck.Core.Transport;
+using NLog;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -21,7 +24,36 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
     private int _connecting;
     private bool _started;
 
+    private readonly BluetoothListenerSettings _settings;
+    private readonly ListenerLog _log;
+
+    public WindowsBleProtocolListener() : this(new BluetoothListenerSettings()) { }
+
+    public WindowsBleProtocolListener(BluetoothListenerSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(settings.LogLevel);
+        if (settings.ServiceUuid == Guid.Empty || settings.ClientToGatewayCharacteristicUuid == Guid.Empty ||
+            settings.GatewayToClientCharacteristicUuid == Guid.Empty ||
+            settings.ClientToGatewayCharacteristicUuid == settings.GatewayToClientCharacteristicUuid)
+            throw new ArgumentException("Configure a BLE service UUID and two distinct characteristic UUIDs.", nameof(settings));
+        if (settings.ChunkSize is < 1 or > 512)
+            throw new ArgumentOutOfRangeException(nameof(settings.ChunkSize));
+        if (settings.InitialMaxMessageBytes is < 1 or > ProtocolConstants.InitialMaxMessageBytes)
+            throw new ArgumentOutOfRangeException(nameof(settings.InitialMaxMessageBytes));
+        if (!Enum.IsDefined(settings.ScanningMode))
+            throw new ArgumentOutOfRangeException(nameof(settings.ScanningMode));
+        _settings = settings;
+        _log = new ListenerLog(LogManager.GetCurrentClassLogger(), settings.LogLevel);
+    }
+
     public event Action<string>? Diagnostic;
+
+    private void Report(LogLevel level, string message, Exception? error = null)
+    {
+        _log.Write(level, message, error);
+        Diagnostic?.Invoke(message);
+    }
 
     public Task Ready => _ready.Task;
 
@@ -33,20 +65,23 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
         // Android implementations may put a 128-bit service UUID in the scan response.
         // A strict OS advertisement filter only matches the primary advertisement and
         // can therefore silently miss the phone. Filter the parsed advertisement here.
-        _watcher = new BluetoothLEAdvertisementWatcher { ScanningMode = BluetoothLEScanningMode.Active };
-        _watcher.Stopped += (_, args) => Diagnostic?.Invoke($"BLE scanner stopped: {args.Error}; watcher status is {_watcher.Status}.");
+        _watcher = new BluetoothLEAdvertisementWatcher { ScanningMode = _settings.ScanningMode };
+        _watcher.Stopped += (watcher, args) => Report(args.Error == BluetoothError.Success ? LogLevel.Debug : LogLevel.Warn, $"BLE scanner stopped: {args.Error}; watcher status is {watcher.Status}.");
         _watcher.Received += OnAdvertisementReceived;
         _watcher.Start();
-        Diagnostic?.Invoke($"BLE advertisement watcher status: {_watcher.Status} (active scan, no OS-side UUID filter).");
+        Report(LogLevel.Info, $"BLE scanner {_watcher.Status} in {_settings.ScanningMode} mode for service {_settings.ServiceUuid}.");
     }
 
     private void OnAdvertisementReceived(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs args)
     {
-        var advertised = string.Join(",", args.Advertisement.ServiceUuids);
-        Diagnostic?.Invoke($"BLE advertisement from {args.BluetoothAddress:X12}; RSSI {args.RawSignalStrengthInDBm}; service UUIDs: {advertised}; name: '{args.Advertisement.LocalName}'.");
-        if (!args.Advertisement.ServiceUuids.Contains(ServiceUuid))
+        if (_log.IsEnabled(LogLevel.Trace) || Diagnostic is not null)
+        {
+            var advertised = string.Join(",", args.Advertisement.ServiceUuids);
+            Report(LogLevel.Trace, $"BLE advertisement from {args.BluetoothAddress:X12}; RSSI {args.RawSignalStrengthInDBm}; service UUIDs: {advertised}; name: '{args.Advertisement.LocalName}'.");
+        }
+        if (!args.Advertisement.ServiceUuids.Contains(_settings.ServiceUuid))
             return;
-        Diagnostic?.Invoke("Found NodeDeck service in advertisement; connecting and discovering GATT service.");
+        Report(LogLevel.Debug, "Found NodeDeck service in advertisement; connecting and discovering GATT service.");
         if (Interlocked.CompareExchange(ref _connecting, 1, 0) == 0)
             _ = ConnectAsync(args.BluetoothAddress);
     }
@@ -57,26 +92,26 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
         {
             var device = await BluetoothLEDevice.FromBluetoothAddressAsync(address)
                 ?? throw new IOException("Could not open the advertising phone over BLE.");
-            var services = await device.GetGattServicesForUuidAsync(ServiceUuid, BluetoothCacheMode.Uncached);
-            Diagnostic?.Invoke($"GATT service discovery result: {services.Status}; matches: {services.Services.Count}.");
+            var services = await device.GetGattServicesForUuidAsync(_settings.ServiceUuid, BluetoothCacheMode.Uncached);
+            Report(LogLevel.Debug, $"GATT service discovery result: {services.Status}; matches: {services.Services.Count}.");
             if (services.Status != GattCommunicationStatus.Success || services.Services.Count == 0)
                 throw new IOException($"NodeDeck BLE service discovery failed: {services.Status}.");
             var service = services.Services[0];
 
-            var txResult = await service.GetCharacteristicsForUuidAsync(ClientToGatewayCharacteristicUuid, BluetoothCacheMode.Uncached);
-            var rxResult = await service.GetCharacteristicsForUuidAsync(GatewayToClientCharacteristicUuid, BluetoothCacheMode.Uncached);
+            var txResult = await service.GetCharacteristicsForUuidAsync(_settings.ClientToGatewayCharacteristicUuid, BluetoothCacheMode.Uncached);
+            var rxResult = await service.GetCharacteristicsForUuidAsync(_settings.GatewayToClientCharacteristicUuid, BluetoothCacheMode.Uncached);
             if (txResult.Status != GattCommunicationStatus.Success || txResult.Characteristics.Count == 0 ||
                 rxResult.Status != GattCommunicationStatus.Success || rxResult.Characteristics.Count == 0)
                 throw new IOException("The phone is missing a NodeDeck BLE characteristic.");
 
             var tx = txResult.Characteristics[0];
             var rx = rxResult.Characteristics[0];
-            var connection = new WindowsBleProtocolConnection(device, rx, tx);
+            var connection = new WindowsBleProtocolConnection(device, rx, tx, _settings);
             tx.ValueChanged += connection.OnValueChanged;
             try
             {
                 var cccd = await tx.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
-                Diagnostic?.Invoke($"GATT notification subscription result: {cccd}.");
+                Report(LogLevel.Debug, $"GATT notification subscription result: {cccd}.");
                 if (cccd != GattCommunicationStatus.Success)
                     throw new IOException($"Could not subscribe to phone BLE notifications: {cccd}.");
             }
@@ -85,16 +120,16 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
                 await connection.DisposeAsync();
                 throw;
             }
-            connection.MonitorDisconnection(message => Diagnostic?.Invoke(message));
+            connection.MonitorDisconnection(message => Report(LogLevel.Warn, message));
             _connection = connection;
             _watcher?.Stop();
             _connections.Writer.TryWrite(_connection);
             _ready.TrySetResult();
-            Diagnostic?.Invoke("BLE GATT connection is ready.");
+            Report(LogLevel.Info, "BLE GATT connection is ready.");
         }
         catch (Exception ex)
         {
-            Diagnostic?.Invoke($"BLE connection attempt failed: {ex.GetType().Name}: {ex.Message}");
+            Report(LogLevel.Error, $"BLE connection attempt failed: {ex.Message}", ex);
             Interlocked.Exchange(ref _connecting, 0);
             _ready.TrySetException(new IOException("Could not connect to the phone's NodeDeck BLE service. Check that Bluetooth LE mode is active on the phone and that the computer supports BLE central mode.", ex));
         }
@@ -124,13 +159,16 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
         private readonly MemoryStream _frame = new();
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private readonly object _frameLock = new();
-        private int _maxMessageBytes = ProtocolConstants.InitialMaxMessageBytes;
+        private int _maxMessageBytes;
+        private readonly int _chunkSize;
 
-        public WindowsBleProtocolConnection(BluetoothLEDevice device, GattCharacteristic rx, GattCharacteristic tx)
+        public WindowsBleProtocolConnection(BluetoothLEDevice device, GattCharacteristic rx, GattCharacteristic tx, BluetoothListenerSettings settings)
         {
             _device = device;
             _rx = rx;
             _tx = tx;
+            _chunkSize = settings.ChunkSize;
+            _maxMessageBytes = settings.InitialMaxMessageBytes;
         }
 
         private Action<string>? _diagnostic;
@@ -202,9 +240,9 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
             await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                for (var offset = 0; offset < frame.Length; offset += BleProtocolConstants.ChunkSize)
+                for (var offset = 0; offset < frame.Length; offset += _chunkSize)
                 {
-                    var length = Math.Min(BleProtocolConstants.ChunkSize, frame.Length - offset);
+                    var length = Math.Min(_chunkSize, frame.Length - offset);
                     using var writer = new DataWriter();
                     writer.WriteBytes(frame.AsSpan(offset, length).ToArray());
                     var status = await _rx.WriteValueAsync(writer.DetachBuffer(), GattWriteOption.WriteWithResponse);

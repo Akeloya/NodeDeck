@@ -1,5 +1,6 @@
 using System.Text.Json;
-using NodeDeck.Protocol;
+using NodeDeck.Core.Protocol;
+using NodeDeck.Core.Transport;
 using NodeDeck.Transport.Tcp;
 
 namespace NodeDeck.Client;

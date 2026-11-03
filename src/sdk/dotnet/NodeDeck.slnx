@@ -7,7 +7,7 @@
   </Folder>
   <Project Path="NodeDeck.Client/NodeDeck.Client.csproj" Id="6dea521c-a538-470a-b555-952a8b20dc98" />
   <Project Path="NodeDeck.Gateway/NodeDeck.Gateway.csproj" Id="35b0be6d-9c8e-4de9-9097-4435e7a3403b" />
-  <Project Path="NodeDeck.Protocol/NodeDeck.Protocol.csproj" />
+  <Project Path="NodeDeck.Core/NodeDeck.Core.csproj" />
   <Project Path="NodeDeck.Transport.Ble.Windows/NodeDeck.Transport.Ble.Windows.csproj" Id="48bd2851-5197-4868-ac4e-f1582fc2d610" />
   <Project Path="NodeDeck.Transport.Tcp/NodeDeck.Transport.Tcp.csproj" Id="8758610a-36bb-4ce8-affd-f165780d36e3" />
   <Project Path="NodeDeck.Tests/NodeDeck.Tests.csproj" />

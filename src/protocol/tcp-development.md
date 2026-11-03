@@ -20,6 +20,17 @@ In the phone app select **Bluetooth LE**, grant Nearby devices permission, and t
 
 The development BLE GATT service UUID is `a1b2c3d4-e5f6-4a1b-8c9d-001122334455`; each protocol envelope is UTF-8 JSON terminated by `\n`, fragmented into 20-byte GATT writes/notifications and reassembled at the other end.
 
+### Listener profiles
+
+Use `--save-settings` to write the selected listener profile and exit. Then use `--settings` to start the gateway with that JSON file. Keep supplying the shared secret separately with `--secret`.
+
+```powershell
+dotnet run --project src/examples/dotnet-console/NodeDeck.Console -- --transport tcp --bind 127.0.0.1 --port 5050 --save-settings listener.json
+dotnet run --project src/examples/dotnet-console/NodeDeck.Console -- --settings listener.json
+```
+
+The `Type` field selects `tcp` or `bluetooth`. Use `--transport bluetooth --save-settings listener.json` to generate a profile containing the GATT UUIDs, scan mode, and write chunk size. Both profiles support `InitialMaxMessageBytes` before protocol negotiation and a per-listener `LogLevel` of `Trace`, `Debug`, `Info` (default), `Warn`, `Error`, `Fatal`, or `Off`. The default NLog configuration sends matching listener events to the console.
+
 The initial BLE characteristics use the plain GATT protection level and do not require bonding/encryption. Use only a temporary development secret while testing; this profile is not suitable for production credentials.
 
 In the Android app, enter the gateway address and port. A physical phone and computer must be on the same Wi-Fi network; use the computer's LAN IPv4 address (for example `192.168.1.20`), and allow inbound TCP port `5050` in the computer firewall. For an Android emulator connecting to a gateway on its host computer, use `10.0.2.2`.

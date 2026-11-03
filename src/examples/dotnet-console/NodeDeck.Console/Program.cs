@@ -1,10 +1,12 @@
 using System.Diagnostics;
-using System.Net;
 using System.Text.Json;
 using NodeDeck.Gateway;
-using NodeDeck.Protocol;
+using NodeDeck.Core.Protocol;
+using NodeDeck.Core.Settings;
+using NodeDeck.Core.Transport;
 using NodeDeck.Transport.Ble.Windows;
-using ProtocolValueType = NodeDeck.Protocol.ValueType;
+using NodeDeck.Transport.Tcp;
+using ProtocolValueType = NodeDeck.Core.Protocol.ValueType;
 
 namespace NodeDeck.Console
 {
@@ -12,30 +14,33 @@ namespace NodeDeck.Console
     {
         private static async Task<int> Main(string[] args)
         {
-            var bindText = ReadOption(args, "--bind") ?? "0.0.0.0";
-            var portText = ReadOption(args, "--port") ?? "5050";
-            var secret = ReadOption(args, "--secret") ?? "nodedeck-dev";
-            var transport = ReadOption(args, "--transport");
-            if (transport is null)
+            var factory = new ProtocolMessageListenerFactory()
+                .Register<TcpListenerSettings>(settings => new TcpJsonServer(settings))
+                .Register<BluetoothListenerSettings>(settings => new WindowsBleProtocolListener(settings));
+
+            string secret;
+            IProtocolMessageListener listener;
+            try
             {
-                var debugProfile = Debugger.IsAttached ? ReadOption(args, "--debug-profile") : null;
-                transport = debugProfile is "tcp" or "bluetooth" ? debugProfile : SelectTransport();
+                secret = ReadOption(args, "--secret") ?? "nodedeck-dev";
+                var output = ReadOption(args, "--save-settings");
+                var settings = ReadOption(args, "--settings") is { } path
+                    ? factory.LoadSettings(path)
+                    : ReadListenerSettings(args);
+                listener = factory.Create(settings);
+                if (output is not null)
+                {
+                    await using (listener)
+                        factory.SaveSettings(output, settings);
+                    return 0;
+                }
             }
-            if (transport is not ("tcp" or "bluetooth"))
+            catch (Exception ex) when (ex is JsonException or IOException or ArgumentException or UnauthorizedAccessException)
             {
-                System.Console.Error.WriteLine("Transport must be 'tcp' or 'bluetooth'.");
+                System.Console.Error.WriteLine(ex.Message);
                 return 2;
             }
-            if (!IPAddress.TryParse(bindText, out var bindAddress))
-            {
-                System.Console.Error.WriteLine($"Invalid bind IP: {bindText}");
-                return 2;
-            }
-            if (!int.TryParse(portText, out var port) || port is < 0 or > 65535)
-            {
-                System.Console.Error.WriteLine($"Invalid port: {portText}");
-                return 2;
-            }
+
             if (secret == "nodedeck-dev")
                 System.Console.WriteLine("Using development secret 'nodedeck-dev'. Set --secret to change it.");
 
@@ -79,22 +84,10 @@ namespace NodeDeck.Console
                     });
             }
 
-            var bleListener = transport == "bluetooth" ? new WindowsBleProtocolListener() : null;
-            if (bleListener is not null)
-                bleListener.Diagnostic += message => System.Console.WriteLine($"[BLE] {message}");
-            var gateway = bleListener is null ? builder.Build(bindAddress, port) : builder.Build(bleListener);
+            var gateway = builder.Build(listener);
             await using (gateway.ConfigureAwait(false))
             {
                 gateway.ClientLoggedOut += () => System.Console.WriteLine("Client logged out. Session ended.");
-                gateway.Start();
-                if (transport == "tcp")
-                    System.Console.WriteLine($"Gateway '{gateway.GatewayId}' listening on TCP {bindAddress}:{gateway.TcpPort}");
-                else
-                {
-                    System.Console.WriteLine($"Scanning for the phone's NodeDeck BLE service ({WindowsBleProtocolListener.ServiceUuid}).");
-                    System.Console.WriteLine("On the phone, choose Bluetooth LE and tap Connect; keep this window open.");
-                }
-
                 using var shutdown = new CancellationTokenSource();
                 System.Console.CancelKeyPress += (_, e) =>
                 {
@@ -102,22 +95,19 @@ namespace NodeDeck.Console
                     shutdown.Cancel();
                 };
 
-                if (bleListener is not null)
+                try
                 {
-                    try
-                    {
-                        await bleListener.Ready.WaitAsync(shutdown.Token);
-                    }
-                    catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
-                    {
-                        return 0;
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Console.Error.WriteLine($"Bluetooth LE connection failed: {ex.GetBaseException().Message}");
-                        return 1;
-                    }
-                    System.Console.WriteLine("Phone connected over Bluetooth LE.");
+                    gateway.Start();
+                    await listener.Ready.WaitAsync(shutdown.Token);
+                }
+                catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+                {
+                    return 0;
+                }
+                catch (Exception ex)
+                {
+                    System.Console.Error.WriteLine($"Listener startup failed: {ex.GetBaseException().Message}");
+                    return 1;
                 }
                 System.Console.WriteLine("Press Ctrl+C to stop.");
 
@@ -131,10 +121,34 @@ namespace NodeDeck.Console
             return 0;
         }
 
+        private static IListenerSettings ReadListenerSettings(string[] args)
+        {
+            var debugProfile = Debugger.IsAttached ? ReadOption(args, "--debug-profile") : null;
+            var transport = ReadOption(args, "--transport") ??
+                (debugProfile is "tcp" or "bluetooth" ? debugProfile : SelectTransport());
+            if (transport == "bluetooth")
+                return new BluetoothListenerSettings();
+            if (transport != "tcp")
+                throw new ArgumentException("Transport must be 'tcp' or 'bluetooth'.");
+            var settings = new TcpListenerSettings();
+            settings.IPAddress = ReadOption(args, "--bind") ?? settings.IPAddress;
+            if (ReadOption(args, "--port") is { } portText)
+            {
+                if (!int.TryParse(portText, out var port))
+                    throw new ArgumentException($"Invalid port '{portText}'.");
+                settings.Port = port;
+            }
+            return settings;
+        }
+
         private static string? ReadOption(string[] arguments, string key)
         {
             var index = Array.IndexOf(arguments, key);
-            return index >= 0 && index + 1 < arguments.Length ? arguments[index + 1] : null;
+            if (index < 0)
+                return null;
+            if (index + 1 == arguments.Length || arguments[index + 1].StartsWith("--", StringComparison.Ordinal))
+                throw new ArgumentException($"Missing value for {key}.");
+            return arguments[index + 1];
         }
 
         private static string SelectTransport()

@@ -1,7 +1,9 @@
+using System.Net;
 using System.Net.Sockets;
-using System.Text;
-using System.Text.Json;
-using NodeDeck.Protocol;
+using NLog;
+using NodeDeck.Core.Logging;
+using NodeDeck.Core.Protocol;
+using NodeDeck.Core.Transport;
 
 namespace NodeDeck.Transport.Tcp;
 
@@ -132,26 +134,63 @@ public sealed class TcpJsonServer : IProtocolMessageListener
     private readonly TcpListener _listener;
     private readonly int _maxMessageBytes;
 
-    public TcpJsonServer(System.Net.IPAddress address, int port, int maxMessageBytes = ProtocolConstants.InitialMaxMessageBytes)
+    private readonly int _backlog;
+    private readonly ListenerLog _log;
+
+    public TcpJsonServer(IPAddress address, int port, int maxMessageBytes = ProtocolConstants.InitialMaxMessageBytes)
+        : this(new TcpListenerSettings
+        {
+            IPAddress = (address ?? throw new ArgumentNullException(nameof(address))).ToString(),
+            Port = port,
+            InitialMaxMessageBytes = Math.Min(maxMessageBytes, ProtocolConstants.InitialMaxMessageBytes)
+        }) { }
+
+    public TcpJsonServer(TcpListenerSettings settings)
     {
-        ArgumentNullException.ThrowIfNull(address);
-        if (port is < 0 or > 65535)
-            throw new ArgumentOutOfRangeException(nameof(port));
-        if (maxMessageBytes < 1)
-            throw new ArgumentOutOfRangeException(nameof(maxMessageBytes));
-        _listener = new TcpListener(address, port);
-        _maxMessageBytes = maxMessageBytes;
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!IPAddress.TryParse(settings.IPAddress, out var address))
+            throw new ArgumentException($"Invalid TCP bind address '{settings.IPAddress}'.", nameof(settings));
+        if (settings.Port is < 0 or > 65535)
+            throw new ArgumentOutOfRangeException(nameof(settings.Port));
+        ArgumentOutOfRangeException.ThrowIfNegative(settings.Backlog);
+        if (settings.InitialMaxMessageBytes is < 1 or > ProtocolConstants.InitialMaxMessageBytes)
+            throw new ArgumentOutOfRangeException(nameof(settings.InitialMaxMessageBytes));
+        ArgumentNullException.ThrowIfNull(settings.LogLevel);
+        _log = new ListenerLog(LogManager.GetCurrentClassLogger(), settings.LogLevel);
+        _backlog = settings.Backlog;
+        _maxMessageBytes = settings.InitialMaxMessageBytes;
+        _listener = new TcpListener(address, settings.Port);
     }
 
-    public int Port => ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
-    public void Start(int backlog = 100) => _listener.Start(backlog);
-    void IProtocolMessageListener.Start() => Start();
-    public async Task<IProtocolMessageConnection> AcceptAsync(CancellationToken cancellationToken = default) =>
-        TcpJsonConnection.FromAcceptedClient(await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false),
-            Math.Min(_maxMessageBytes, ProtocolConstants.InitialMaxMessageBytes));
+    public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+
+    public void Start() => Start(_backlog);
+
+    public void Start(int backlog)
+    {
+        try
+        {
+            _listener.Start(backlog);
+            _log.Write(LogLevel.Info, $"Listening on TCP {_listener.LocalEndpoint}.");
+        }
+        catch (SocketException ex)
+        {
+            _log.Write(LogLevel.Error, "Could not start TCP listener.", ex);
+            throw;
+        }
+    }
+
+    public async Task<IProtocolMessageConnection> AcceptAsync(CancellationToken cancellationToken = default)
+    {
+        var client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+        _log.Write(LogLevel.Info, $"Accepted TCP connection from {client.Client.RemoteEndPoint}.");
+        return TcpJsonConnection.FromAcceptedClient(client, _maxMessageBytes);
+    }
+
     public ValueTask DisposeAsync()
     {
         _listener.Stop();
+        _log.Write(LogLevel.Debug, "TCP listener stopped.");
         return ValueTask.CompletedTask;
     }
 }

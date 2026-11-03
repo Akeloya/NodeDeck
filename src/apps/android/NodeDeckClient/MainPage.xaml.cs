@@ -1,6 +1,6 @@
 using System.Text.Json;
 using NodeDeck.Client;
-using NodeDeck.Protocol;
+using NodeDeck.Core.Protocol;
 #if ANDROID
 using NodeDeckClient.Platforms.Android;
 #endif

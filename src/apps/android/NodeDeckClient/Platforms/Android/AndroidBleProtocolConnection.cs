@@ -7,7 +7,8 @@ using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Java.Util;
-using NodeDeck.Protocol;
+using NodeDeck.Core.Protocol;
+using NodeDeck.Core.Transport;
 
 namespace NodeDeckClient.Platforms.Android;
 
