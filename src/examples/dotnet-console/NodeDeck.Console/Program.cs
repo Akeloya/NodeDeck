@@ -36,7 +36,8 @@ namespace NodeDeck.Console
                 System.Console.Error.WriteLine($"Invalid port: {portText}");
                 return 2;
             }
-            if (secret == "nodedeck-dev") System.Console.WriteLine("Using development secret 'nodedeck-dev'. Set --secret to change it.");
+            if (secret == "nodedeck-dev")
+                System.Console.WriteLine("Using development secret 'nodedeck-dev'. Set --secret to change it.");
 
             var parameters = new ValueDescriptor
             {

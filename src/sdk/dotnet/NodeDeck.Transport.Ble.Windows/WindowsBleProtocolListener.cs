@@ -27,7 +27,8 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
 
     public void Start()
     {
-        if (_started) throw new InvalidOperationException("BLE listener has already started.");
+        if (_started)
+            throw new InvalidOperationException("BLE listener has already started.");
         _started = true;
         // Android implementations may put a 128-bit service UUID in the scan response.
         // A strict OS advertisement filter only matches the primary advertisement and
@@ -43,7 +44,8 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
     {
         var advertised = string.Join(",", args.Advertisement.ServiceUuids);
         Diagnostic?.Invoke($"BLE advertisement from {args.BluetoothAddress:X12}; RSSI {args.RawSignalStrengthInDBm}; service UUIDs: {advertised}; name: '{args.Advertisement.LocalName}'.");
-        if (!args.Advertisement.ServiceUuids.Contains(ServiceUuid)) return;
+        if (!args.Advertisement.ServiceUuids.Contains(ServiceUuid))
+            return;
         Diagnostic?.Invoke("Found NodeDeck service in advertisement; connecting and discovering GATT service.");
         if (Interlocked.CompareExchange(ref _connecting, 1, 0) == 0)
             _ = ConnectAsync(args.BluetoothAddress);
@@ -75,7 +77,8 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
             {
                 var cccd = await tx.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
                 Diagnostic?.Invoke($"GATT notification subscription result: {cccd}.");
-                if (cccd != GattCommunicationStatus.Success) throw new IOException($"Could not subscribe to phone BLE notifications: {cccd}.");
+                if (cccd != GattCommunicationStatus.Success)
+                    throw new IOException($"Could not subscribe to phone BLE notifications: {cccd}.");
             }
             catch
             {
@@ -99,14 +102,16 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
 
     public async Task<IProtocolMessageConnection> AcceptAsync(CancellationToken cancellationToken = default)
     {
-        if (!_started) throw new InvalidOperationException("Start the BLE listener before accepting a connection.");
+        if (!_started)
+            throw new InvalidOperationException("Start the BLE listener before accepting a connection.");
         return await _connections.Reader.ReadAsync(cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
     {
         _watcher?.Stop();
-        if (_connection is not null) await _connection.DisposeAsync();
+        if (_connection is not null)
+            await _connection.DisposeAsync();
         _connections.Writer.TryComplete();
     }
 
@@ -147,7 +152,8 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
         public int MaxMessageBytes => _maxMessageBytes;
         public void SetMaxMessageBytes(int maxMessageBytes)
         {
-            if (maxMessageBytes < 1) throw new ArgumentOutOfRangeException(nameof(maxMessageBytes));
+            if (maxMessageBytes < 1)
+                throw new ArgumentOutOfRangeException(nameof(maxMessageBytes));
             _maxMessageBytes = maxMessageBytes;
         }
 
@@ -160,15 +166,17 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
             {
                 foreach (var value in bytes)
                 {
-                    if (value == (byte)'\n')
+                    if (value == ProtocolConstants.FrameDelimiter)
                     {
-                        if (_frame.Length == 0) continue;
+                        if (_frame.Length == 0)
+                            continue;
                         var frame = _frame.ToArray();
                         _frame.SetLength(0);
-                        if (frame[^1] == (byte)'\r') Array.Resize(ref frame, frame.Length - 1);
+                        if (frame[^1] == ProtocolConstants.CarriageReturn)
+                            Array.Resize(ref frame, frame.Length - 1);
                         if (frame.Length > _maxMessageBytes)
                         {
-                            _incoming.Writer.TryComplete(new ProtocolValidationException("message_too_large", "BLE message exceeds the negotiated limit."));
+                            _incoming.Writer.TryComplete(new MessageTooLargeException("BLE message exceeds the negotiated limit."));
                             return;
                         }
                         _incoming.Writer.TryWrite(frame);
@@ -177,7 +185,7 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
                     {
                         if (_frame.Length >= _maxMessageBytes)
                         {
-                            _incoming.Writer.TryComplete(new ProtocolValidationException("message_too_large", "BLE message exceeds the negotiated limit."));
+                            _incoming.Writer.TryComplete(new MessageTooLargeException("BLE message exceeds the negotiated limit."));
                             return;
                         }
                         _frame.WriteByte(value);
@@ -188,18 +196,20 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
 
         public async Task SendAsync<T>(T message, CancellationToken cancellationToken = default)
         {
-            var frame = ProtocolJson.Serialize(message).Append((byte)'\n').ToArray();
-            if (frame.Length - 1 > _maxMessageBytes) throw new ProtocolValidationException("message_too_large", "BLE message exceeds the negotiated limit.");
+            var frame = ProtocolJson.Serialize(message).Append(ProtocolConstants.FrameDelimiter).ToArray();
+            if (frame.Length - 1 > _maxMessageBytes)
+                throw new MessageTooLargeException("BLE message exceeds the negotiated limit.");
             await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                for (var offset = 0; offset < frame.Length; offset += 20)
+                for (var offset = 0; offset < frame.Length; offset += BleProtocolConstants.ChunkSize)
                 {
-                    var length = Math.Min(20, frame.Length - offset);
+                    var length = Math.Min(BleProtocolConstants.ChunkSize, frame.Length - offset);
                     using var writer = new DataWriter();
                     writer.WriteBytes(frame.AsSpan(offset, length).ToArray());
                     var status = await _rx.WriteValueAsync(writer.DetachBuffer(), GattWriteOption.WriteWithResponse);
-                    if (status != GattCommunicationStatus.Success) throw new IOException($"Phone BLE write failed: {status}.");
+                    if (status != GattCommunicationStatus.Success)
+                        throw new IOException($"Phone BLE write failed: {status}.");
                 }
             }
             finally { _writeLock.Release(); }
@@ -207,14 +217,16 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
 
         public async Task<T?> ReceiveAsync<T>(CancellationToken cancellationToken = default)
         {
-            if (!await _incoming.Reader.WaitToReadAsync(cancellationToken)) return default;
+            if (!await _incoming.Reader.WaitToReadAsync(cancellationToken))
+                return default;
             var frame = await _incoming.Reader.ReadAsync(cancellationToken);
             return ProtocolJson.Deserialize<T>(frame, _maxMessageBytes);
         }
 
         public ValueTask DisposeAsync()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0) return ValueTask.CompletedTask;
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return ValueTask.CompletedTask;
             _incoming.Writer.TryComplete();
             _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
             _tx.ValueChanged -= OnValueChanged;

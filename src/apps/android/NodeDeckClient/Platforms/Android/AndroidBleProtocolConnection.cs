@@ -38,7 +38,8 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
     public int MaxMessageBytes => _maxMessageBytes;
     public void SetMaxMessageBytes(int maxMessageBytes)
     {
-        if (maxMessageBytes < 1) throw new ArgumentOutOfRangeException(nameof(maxMessageBytes));
+        if (maxMessageBytes < 1)
+            throw new ArgumentOutOfRangeException(nameof(maxMessageBytes));
         _maxMessageBytes = maxMessageBytes;
     }
 
@@ -49,7 +50,8 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         var manager = (BluetoothManager?)activity.GetSystemService(Context.BluetoothService)
             ?? throw new InvalidOperationException("Android Bluetooth is unavailable.");
         var adapter = manager.Adapter ?? throw new InvalidOperationException("This phone does not support Bluetooth.");
-        if (!adapter.IsEnabled) throw new InvalidOperationException("Turn on Bluetooth, then tap Connect again.");
+        if (!adapter.IsEnabled)
+            throw new InvalidOperationException("Turn on Bluetooth, then tap Connect again.");
         var advertiser = adapter.BluetoothLeAdvertiser ?? throw new InvalidOperationException("This phone does not support BLE advertising.");
 
         var callback = new GattServerCallback();
@@ -62,7 +64,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
 
         var tx = new BluetoothGattCharacteristic(UUID.FromString(BleProtocolConstants.ClientToGatewayCharacteristicUuid),
             GattProperty.Notify, GattPermission.Read);
-        tx.AddDescriptor(new BluetoothGattDescriptor(UUID.FromString("00002902-0000-1000-8000-00805f9b34fb"),
+        tx.AddDescriptor(new BluetoothGattDescriptor(UUID.FromString(BleProtocolConstants.ClientConfigurationDescriptorUuid),
             GattDescriptorPermission.Read | GattDescriptorPermission.Write));
         var rx = new BluetoothGattCharacteristic(UUID.FromString(BleProtocolConstants.GatewayToClientCharacteristicUuid),
             GattProperty.Write, GattPermission.Write);
@@ -115,16 +117,17 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
 
     public async Task SendAsync<T>(T message, CancellationToken cancellationToken = default)
     {
-        var bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(message, ProtocolJson.Options).Append((byte)'\n').ToArray();
-        if (bytes.Length - 1 > _maxMessageBytes) throw new ProtocolValidationException("message_too_large", "BLE message exceeds the negotiated limit.");
+        var bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(message, ProtocolJson.Options).Append(ProtocolConstants.FrameDelimiter).ToArray();
+        if (bytes.Length - 1 > _maxMessageBytes)
+            throw new MessageTooLargeException("BLE message exceeds the negotiated limit.");
         var device = _callback.Central ?? throw new IOException("The computer is not connected to the phone's BLE service.");
         var characteristic = _callback.Tx ?? throw new IOException("The NodeDeck BLE transmit characteristic is unavailable.");
         await _notifyLock.WaitAsync(cancellationToken);
         try
         {
-            for (var offset = 0; offset < bytes.Length; offset += 20)
+            for (var offset = 0; offset < bytes.Length; offset += BleProtocolConstants.ChunkSize)
             {
-                var length = Math.Min(20, bytes.Length - offset);
+                var length = Math.Min(BleProtocolConstants.ChunkSize, bytes.Length - offset);
                 var chunk = bytes.AsSpan(offset, length).ToArray();
                 _callback.BeginNotification();
                 bool started;
@@ -138,7 +141,8 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
                     started = NotifyLegacy(device, characteristic, chunk);
                 }
 #pragma warning restore CA1416
-                if (!started) throw new IOException("Android could not send a BLE notification to the computer.");
+                if (!started)
+                    throw new IOException("Android could not send a BLE notification to the computer.");
                 await _callback.WaitForNotificationAsync(cancellationToken);
             }
         }
@@ -169,15 +173,17 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         {
             foreach (var value in bytes)
             {
-                if (value == (byte)'\n')
+                if (value == ProtocolConstants.FrameDelimiter)
                 {
-                    if (_frame.Length == 0) continue;
+                    if (_frame.Length == 0)
+                        continue;
                     var message = _frame.ToArray();
                     _frame.SetLength(0);
-                    if (message[^1] == (byte)'\r') Array.Resize(ref message, message.Length - 1);
+                    if (message[^1] == ProtocolConstants.CarriageReturn)
+                        Array.Resize(ref message, message.Length - 1);
                     if (message.Length > _maxMessageBytes)
                     {
-                        _incoming.Writer.TryComplete(new ProtocolValidationException("message_too_large", "BLE message exceeds the negotiated limit."));
+                        _incoming.Writer.TryComplete(new MessageTooLargeException("BLE message exceeds the negotiated limit."));
                         return;
                     }
                     _incoming.Writer.TryWrite(message);
@@ -186,7 +192,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
                 {
                     if (_frame.Length >= _maxMessageBytes)
                     {
-                        _incoming.Writer.TryComplete(new ProtocolValidationException("message_too_large", "BLE message exceeds the negotiated limit."));
+                        _incoming.Writer.TryComplete(new MessageTooLargeException("BLE message exceeds the negotiated limit."));
                         return;
                     }
                     _frame.WriteByte(value);
@@ -230,14 +236,20 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         public override void OnServiceAdded(GattStatus status, BluetoothGattService? service)
         {
             Diagnostic?.Invoke($"Android GATT service registration callback: {status}.");
-            if (status == GattStatus.Success) ServiceAdded.TrySetResult(true);
-            else ServiceAdded.TrySetException(new IOException($"Could not add NodeDeck BLE service: {status}."));
+            if (status == GattStatus.Success)
+                ServiceAdded.TrySetResult(true);
+            else
+                ServiceAdded.TrySetException(new IOException($"Could not add NodeDeck BLE service: {status}."));
         }
 
         public override void OnConnectionStateChange(BluetoothDevice? device, ProfileState status, ProfileState newState)
         {
             Diagnostic?.Invoke($"GATT connection callback: status={status}, state={newState}, device={device?.Address ?? "unknown"}.");
-            if ((int)status != 0) { Connected.TrySetException(new IOException($"Windows BLE connection failed: {status}.")); return; }
+            if ((int)status != 0)
+            {
+                Connected.TrySetException(new IOException($"Windows BLE connection failed: {status}."));
+                return;
+            }
             if (newState == ProfileState.Connected && device is not null)
             {
                 Central = device;
@@ -253,7 +265,8 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         public override void OnDescriptorWriteRequest(BluetoothDevice? device, int requestId, BluetoothGattDescriptor? descriptor,
             bool preparedWrite, bool responseNeeded, int offset, byte[]? value)
         {
-            if (device is null) return;
+            if (device is null)
+                return;
             var subscribed = !preparedWrite && offset == 0 && value is [1, 0]
                 && descriptor?.Characteristic?.Uuid?.Equals(Tx?.Uuid) == true;
             if (responseNeeded)
@@ -279,8 +292,10 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
 
         public override void OnNotificationSent(BluetoothDevice? device, GattStatus status)
         {
-            if (status == GattStatus.Success) _notificationSent?.TrySetResult(true);
-            else _notificationSent?.TrySetException(new IOException($"BLE notification failed: {status}."));
+            if (status == GattStatus.Success)
+                _notificationSent?.TrySetResult(true);
+            else
+                _notificationSent?.TrySetException(new IOException($"BLE notification failed: {status}."));
         }
     }
 }
@@ -292,10 +307,13 @@ internal static class AndroidBlePermissions
 
     public static async Task RequestAsync(Activity activity, CancellationToken cancellationToken)
     {
-        if (Build.VERSION.SdkInt < BuildVersionCodes.M) return;
-        if (Build.VERSION.SdkInt < BuildVersionCodes.S) return;
+        if (Build.VERSION.SdkInt < BuildVersionCodes.M)
+            return;
+        if (Build.VERSION.SdkInt < BuildVersionCodes.S)
+            return;
         var permissions = new[] { "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_ADVERTISE" };
-        if (permissions.All(x => activity.CheckSelfPermission(x) == Permission.Granted)) return;
+        if (permissions.All(x => activity.CheckSelfPermission(x) == Permission.Granted))
+            return;
         _pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         activity.RequestPermissions(permissions, RequestCode);
         await _pending.Task.WaitAsync(TimeSpan.FromMinutes(1), cancellationToken);
@@ -303,9 +321,12 @@ internal static class AndroidBlePermissions
 
     public static void Complete(int requestCode, Permission[] grantResults)
     {
-        if (requestCode != RequestCode) return;
-        if (grantResults.All(x => x == Permission.Granted)) _pending?.TrySetResult(true);
-        else _pending?.TrySetException(new UnauthorizedAccessException("Allow Nearby devices permission to advertise the NodeDeck BLE service."));
+        if (requestCode != RequestCode)
+            return;
+        if (grantResults.All(x => x == Permission.Granted))
+            _pending?.TrySetResult(true);
+        else
+            _pending?.TrySetException(new UnauthorizedAccessException("Allow Nearby devices permission to advertise the NodeDeck BLE service."));
         _pending = null;
     }
 }

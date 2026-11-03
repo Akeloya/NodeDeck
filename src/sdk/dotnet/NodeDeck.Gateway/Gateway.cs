@@ -18,7 +18,8 @@ public sealed class GatewayBuilder(string gatewayId, string name, string sharedS
     public GatewayBuilder AddCommand(CommandDefinition definition, GatewayCommandHandler handler)
     {
         ArgumentNullException.ThrowIfNull(definition); ArgumentNullException.ThrowIfNull(handler);
-        if (_commands.Any(x => x.Definition.Id == definition.Id)) throw new ArgumentException($"Command '{definition.Id}' already exists.");
+        if (_commands.Any(x => x.Definition.Id == definition.Id))
+            throw new ArgumentException($"Command '{definition.Id}' already exists.");
         _commands.Add(new GatewayCommand(definition, handler)); return this;
     }
     public GatewayServer Build(IPAddress address, int port, string? description = null) =>
@@ -56,7 +57,7 @@ public sealed class GatewayServer : IAsyncDisposable
         _gatewayId = gatewayId; _name = name; _description = description; _sharedSecret = sharedSecret;
         _commands = commands.ToDictionary(x => x.Definition.Id, StringComparer.Ordinal);
         _capabilities = new CapabilitiesDocument(new GatewayInfo(gatewayId, name, description), _capabilitiesRevision,
-            ["commands", "operations.poll", "ui"], new ProtocolLimits(262144, 1000, 250, 86400000, 86400000, false),
+            [ProtocolFeature.Commands, ProtocolFeature.OperationsPoll, ProtocolFeature.Ui], ProtocolLimits.Default,
             _commands.Values.Select(x => x.Definition).ToArray(), [], []);
         ProtocolValidator.ValidateCapabilities(_capabilities);
         _ui = new UiDocument(_uiRevision, _capabilitiesRevision, null, []);
@@ -70,14 +71,16 @@ public sealed class GatewayServer : IAsyncDisposable
 
     public void Start()
     {
-        if (_acceptLoop is not null) throw new InvalidOperationException("Gateway has already started.");
+        if (_acceptLoop is not null)
+            throw new InvalidOperationException("Gateway has already started.");
         _listener.Start();
         _acceptLoop = AcceptLoopAsync(_shutdown.Token);
     }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
-        if (_acceptLoop is null) Start();
+        if (_acceptLoop is null)
+            Start();
         await _acceptLoop!.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -113,39 +116,41 @@ public sealed class GatewayServer : IAsyncDisposable
                 catch (ProtocolValidationException ex)
                 {
                     // Malformed messages without a trustworthy requestId cannot be correlated safely.
-                    if (ex.Code == "message_too_large") break;
+                    if (ex is MessageTooLargeException)
+                        break;
                     continue;
                 }
-                if (request is null) break;
+                if (request is null)
+                    break;
                 ProtocolResponse response;
                 try
                 {
                     ProtocolValidator.ValidateRequest(request, helloDone, maxBytes);
-                    if (request.Type != "protocol.hello" && ProtocolConstants.RequestTypes.Contains(request.Type))
+                    if (request.Type != RequestType.ProtocolHello && ProtocolConstants.RequestTypes.Contains(request.Type))
                     {
-                        if (request.Type != "auth.login")
+                        if (request.Type != RequestType.AuthLogin)
                         {
                             if (!string.Equals(request.AccessToken, token, StringComparison.Ordinal) || token is null ||
                                 !_sessions.TryGetValue(token, out var session) || session.ExpiresAt <= DateTimeOffset.UtcNow)
                             {
-                                if (token is not null) _sessions.TryRemove(token, out _);
-                                throw new ProtocolValidationException("unauthorized", "Authentication required.");
+                                if (token is not null)
+                                    _sessions.TryRemove(token, out _);
+                                throw new UnauthorizedException("Authentication required.");
                             }
                         }
                     }
                     response = await DispatchAsync(request, connection, cancellationToken).ConfigureAwait(false);
-                    if (request.Type == "protocol.hello" && response.Error is null)
+                    if (request.Type == RequestType.ProtocolHello && response.Error is null)
                     {
                         helloDone = true;
                         maxBytes = _capabilities.Limits.MaxMessageBytes;
                         connection.SetMaxMessageBytes(maxBytes);
                     }
-                    if (request.Type == "auth.login" && response.Error is null)
+                    if (request.Type == RequestType.AuthLogin && response.Error is null)
                     {
-                        using var resultDoc = JsonDocument.Parse(response.Result!.Value.GetRawText());
-                        token = resultDoc.RootElement.GetProperty("accessToken").GetString();
+                        token = response.Result!.Value.Deserialize<LoginResult>(ProtocolJson.Options)!.AccessToken;
                     }
-                    if (request.Type == "auth.logout" && response.Error is null)
+                    if (request.Type == RequestType.AuthLogout && response.Error is null)
                     {
                         token = null;
                         ClientLoggedOut?.Invoke();
@@ -157,7 +162,7 @@ public sealed class GatewayServer : IAsyncDisposable
                 }
                 catch (Exception)
                 {
-                    response = ProtocolResponse.Failure(request, new ProtocolError("internal_error", "The gateway could not process the request.", false));
+                    response = ProtocolResponse.Failure(request, new ProtocolError(ProtocolErrorCode.InternalError, "The gateway could not process the request.", false));
                 }
                 try { ProtocolValidator.ValidateResponse(response, maxBytes); await connection.SendAsync(response, cancellationToken).ConfigureAwait(false); }
                 catch (ProtocolValidationException) { break; }
@@ -170,45 +175,46 @@ public sealed class GatewayServer : IAsyncDisposable
     {
         switch (request.Type)
         {
-            case "protocol.hello":
+            case RequestType.ProtocolHello:
             {
-                var hello = request.Payload.Deserialize<HelloPayload>(ProtocolJson.Options) ?? throw new ProtocolValidationException("invalid_request", "Invalid hello payload.");
+                var hello = request.Payload.Deserialize<HelloPayload>(ProtocolJson.Options) ?? throw new InvalidRequestException("Invalid hello payload.");
                 var selected = hello.SupportedVersions.Contains(ProtocolConstants.CurrentVersion, StringComparer.Ordinal);
                 return selected
-                    ? ProtocolResponse.Success(request, new HelloResult(ProtocolConstants.CurrentVersion, _gatewayId, ["sharedSecret"], _capabilities.Limits.MaxMessageBytes))
-                    : ProtocolResponse.Failure(request, new ProtocolError("unsupported_version", "No supported protocol version.", false));
+                    ? ProtocolResponse.Success(request, new HelloResult(ProtocolConstants.CurrentVersion, _gatewayId, [AuthMethod.SharedSecret], _capabilities.Limits.MaxMessageBytes))
+                    : ProtocolResponse.Failure(request, new ProtocolError(ProtocolErrorCode.UnsupportedVersion, "No supported protocol version.", false));
             }
-            case "auth.login":
+            case RequestType.AuthLogin:
             {
-                var login = request.Payload.Deserialize<LoginPayload>(ProtocolJson.Options) ?? throw new ProtocolValidationException("invalid_request", "Invalid login payload.");
-                if (login.Method != "sharedSecret" || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(login.Secret), Encoding.UTF8.GetBytes(_sharedSecret)))
-                    throw new ProtocolValidationException("unauthorized", "Invalid credentials.");
+                var login = request.Payload.Deserialize<LoginPayload>(ProtocolJson.Options) ?? throw new InvalidRequestException("Invalid login payload.");
+                if (login.Method != AuthMethod.SharedSecret || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(login.Secret), Encoding.UTF8.GetBytes(_sharedSecret)))
+                    throw new UnauthorizedException("Invalid credentials.");
                 var accessToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
                 var expires = DateTimeOffset.UtcNow.AddHours(12);
                 _sessions[accessToken] = new Session("operator", expires);
                 return ProtocolResponse.Success(request, new LoginResult(accessToken, expires, "operator"));
             }
-            case "auth.logout":
-                if (request.AccessToken is { } logoutToken) _sessions.TryRemove(logoutToken, out _);
+            case RequestType.AuthLogout:
+                if (request.AccessToken is { } logoutToken)
+                    _sessions.TryRemove(logoutToken, out _);
                 return ProtocolResponse.Success(request, new LogoutResult(true));
-            case "capabilities.get": return ProtocolResponse.Success(request, _capabilities);
-            case "ui.get": return ProtocolResponse.Success(request, _ui);
-            case "command.invoke": return await InvokeAsync(request, cancellationToken).ConfigureAwait(false);
-            case "operation.get":
+            case RequestType.CapabilitiesGet: return ProtocolResponse.Success(request, _capabilities);
+            case RequestType.UiGet: return ProtocolResponse.Success(request, _ui);
+            case RequestType.CommandInvoke: return await InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+            case RequestType.OperationGet:
             {
-                var payload = request.Payload.Deserialize<Dictionary<string, string>>(ProtocolJson.Options);
-                if (payload is null || !payload.TryGetValue("operationToken", out var opToken) || !_operations.TryGetValue(opToken, out var operation))
-                    throw new ProtocolValidationException("operation_not_found", "Operation not found.");
+                var payload = request.Payload.Deserialize<OperationGetPayload>(ProtocolJson.Options);
+                if (payload?.OperationToken is null || !_operations.TryGetValue(payload.OperationToken, out var operation))
+                    throw new OperationNotFoundException("Operation not found.");
                 return ProtocolResponse.Success(request, operation);
             }
-            default: return ProtocolResponse.Failure(request, new ProtocolError("unsupported_type", "Unknown request type.", false));
+            default: return ProtocolResponse.Failure(request, new ProtocolError(ProtocolErrorCode.UnsupportedType, "Unknown request type.", false));
         }
     }
 
     private async Task<ProtocolResponse> InvokeAsync(ProtocolRequest request, CancellationToken cancellationToken)
     {
         var payload = request.Payload.Deserialize<CommandInvokePayload>(ProtocolJson.Options)
-            ?? throw new ProtocolValidationException("invalid_request", "Invalid command.invoke payload.");
+            ?? throw new InvalidRequestException($"Invalid {RequestType.CommandInvoke} payload.");
         var key = $"operator\u001f{request.RequestId}";
         var fingerprint = Canonicalize(request.Payload);
         var reservation = _dedupLocks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
@@ -222,21 +228,22 @@ public sealed class GatewayServer : IAsyncDisposable
     {
         if (_dedup.TryGetValue(key, out var cached))
         {
-            if (cached.Fingerprint != fingerprint) throw new ProtocolValidationException("request_conflict", "requestId was already used with a different payload.");
+            if (cached.Fingerprint != fingerprint)
+                throw new RequestConflictException("requestId was already used with a different payload.");
             return cached.Response;
         }
         ProtocolResponse response;
         if (payload.UiRevision is not null && payload.UiRevision != _uiRevision)
-            response = ProtocolResponse.Success(request, new CommandExecutionResult("rejected", Error: new ProtocolError("schema_outdated", "UI schema has changed.", false)));
+            response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Rejected, Error: new ProtocolError(ProtocolErrorCode.SchemaOutdated, "UI schema has changed.", false)));
         else if (!_commands.TryGetValue(payload.CommandId, out var command))
-            response = ProtocolResponse.Success(request, new CommandExecutionResult("rejected", Error: new ProtocolError("command_not_found", "Command not found.", false)));
+            response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Rejected, Error: new ProtocolError(ProtocolErrorCode.CommandNotFound, "Command not found.", false)));
         else if (!command.Definition.Availability.Enabled)
-            response = ProtocolResponse.Success(request, new CommandExecutionResult("rejected", Error: new ProtocolError("command_unavailable", command.Definition.Availability.Reason ?? "Command unavailable.", false)));
+            response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Rejected, Error: new ProtocolError(ProtocolErrorCode.CommandUnavailable, command.Definition.Availability.Reason ?? "Command unavailable.", false)));
         else
         {
             var errors = ProtocolValidator.ValidateArguments(command.Definition.Parameters, payload.Arguments);
             if (errors.Count != 0)
-                response = ProtocolResponse.Success(request, new CommandExecutionResult("rejected", Error: new ProtocolError("invalid_arguments", errors[0], false)));
+                response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Rejected, Error: new ProtocolError(ProtocolErrorCode.InvalidArguments, errors[0], false)));
             else
             {
                 try
@@ -244,13 +251,14 @@ public sealed class GatewayServer : IAsyncDisposable
                     CommandReceived?.Invoke("operator", payload.CommandId, payload.Arguments.Clone());
                     var result = await command.Handler(payload.Arguments, cancellationToken).ConfigureAwait(false);
                     var outputErrors = ProtocolValidator.ValidateArguments(command.Definition.Result, result);
-                    if (outputErrors.Count != 0) throw new InvalidOperationException("Handler returned an invalid result.");
-                    response = ProtocolResponse.Success(request, new CommandExecutionResult("completed", result));
+                    if (outputErrors.Count != 0)
+                        throw new InvalidOperationException("Handler returned an invalid result.");
+                    response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Completed, result));
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch (Exception)
                 {
-                    response = ProtocolResponse.Success(request, new CommandExecutionResult("failed", Error: new ProtocolError("execution_failed", "Command execution failed.", false)));
+                    response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Failed, Error: new ProtocolError(ProtocolErrorCode.ExecutionFailed, "Command execution failed.", false)));
                 }
             }
         }
@@ -265,16 +273,18 @@ public sealed class GatewayServer : IAsyncDisposable
         JsonValueKind.String => JsonSerializer.Serialize(value.GetString()),
         JsonValueKind.Number => value.GetRawText(),
         JsonValueKind.True => "true", JsonValueKind.False => "false", JsonValueKind.Null => "null",
-        _ => throw new ProtocolValidationException("invalid_request", "Unsupported JSON value.")
+        _ => throw new InvalidRequestException("Unsupported JSON value.")
     };
 
     public async ValueTask DisposeAsync()
     {
         _shutdown.Cancel();
         await _listener.DisposeAsync().ConfigureAwait(false);
-        if (_acceptLoop is not null) try { await _acceptLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
+        if (_acceptLoop is not null)
+            try { await _acceptLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
         Task[] tasks; lock (_tasksLock) tasks = _connections.ToArray();
-        if (tasks.Length > 0) try { await Task.WhenAll(tasks).ConfigureAwait(false); } catch { }
+        if (tasks.Length > 0)
+            try { await Task.WhenAll(tasks).ConfigureAwait(false); } catch { }
         _shutdown.Dispose();
     }
 

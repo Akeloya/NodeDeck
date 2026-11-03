@@ -69,7 +69,7 @@ public partial class MainPage : ContentPage
 #endif
             }
             var capabilities = await _client.GetCapabilitiesAsync();
-            var count = capabilities.GetProperty("commands").GetArrayLength();
+            var count = capabilities.GetProperty(ProtocolField.Commands).GetArrayLength();
             CommandButtons.IsEnabled = true;
             StatusLabel.Text = $"Connected. Gateway publishes {count} command(s).";
         });
@@ -77,23 +77,30 @@ public partial class MainPage : ContentPage
 
     private async void OnCommandClicked(object? sender, EventArgs e)
     {
-        if (sender is not Button button || button.CommandParameter is not string commandId) return;
-        if (_client is null) { StatusLabel.Text = "Connect to a gateway first."; return; }
+        if (sender is not Button button || button.CommandParameter is not string commandId)
+            return;
+        if (_client is null)
+        {
+            StatusLabel.Text = "Connect to a gateway first.";
+            return;
+        }
         await RunBusyAsync(async () =>
         {
             var response = await _client.InvokeAsync(commandId, new { message = MessageEntry.Text ?? "" });
-            var execution = response.Deserialize<CommandResultView>(ProtocolJson.Options);
-            if (execution?.Error is { } error) throw new InvalidOperationException($"{error.Code}: {error.Message}");
+            var execution = response.Deserialize<CommandExecutionResult>(ProtocolJson.Options);
+            if (execution?.Error is { } error)
+                throw new GatewayRequestException(error);
             ResultLabel.Text = execution?.Output is { } output && output.TryGetProperty("reply", out var reply)
                 ? reply.GetString() ?? "Command completed."
                 : JsonSerializer.Serialize(response);
-            StatusLabel.Text = $"Command {commandId}: {execution?.Status ?? "completed"}.";
+            StatusLabel.Text = $"Command {commandId}: {execution?.Status ?? ExecutionStatus.Completed}.";
         });
     }
 
     private async Task RunBusyAsync(Func<Task> action)
     {
-        if (_busy) return;
+        if (_busy)
+            return;
         _busy = true; ConnectButton.IsEnabled = false;
         StatusLabel.Text = "Working…";
         try { await action(); }
@@ -108,11 +115,9 @@ public partial class MainPage : ContentPage
     private async Task DisconnectAsync()
     {
         CommandButtons.IsEnabled = false;
-        if (_client is null) return;
+        if (_client is null)
+            return;
         await _client.DisposeAsync();
         _client = null;
     }
-
-    private sealed record CommandResultView(string Status, JsonElement? Output, GatewayErrorView? Error);
-    private sealed record GatewayErrorView(string Code, string Message);
 }

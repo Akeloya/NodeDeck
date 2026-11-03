@@ -48,8 +48,8 @@ public class GatewayTcpTests
         gateway.Start();
         await using var client = await NodeDeckClientConnection.ConnectAsync("127.0.0.1", gateway.TcpPort!.Value, "test-secret");
         var result = await client.InvokeAsync("demo.echo", new { value = "from phone" });
-        Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("completed"));
-        Assert.That(result.GetProperty("output").GetProperty("echo").GetString(), Is.EqualTo("from phone"));
+        Assert.That(result.GetProperty(ProtocolField.Status).GetString(), Is.EqualTo(ExecutionStatus.Completed));
+        Assert.That(result.GetProperty(ProtocolField.Output).GetProperty("echo").GetString(), Is.EqualTo("from phone"));
     }
 
     [Test]
@@ -59,8 +59,8 @@ public class GatewayTcpTests
         gateway.Start();
         await using var client = await NodeDeckClientConnection.ConnectAsync("127.0.0.1", gateway.TcpPort!.Value, "test-secret");
         var result = await client.InvokeAsync("demo.echo", new { unexpected = 1 });
-        Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("rejected"));
-        Assert.That(result.GetProperty("error").GetProperty("code").GetString(), Is.EqualTo("invalid_arguments"));
+        Assert.That(result.GetProperty(ProtocolField.Status).GetString(), Is.EqualTo(ExecutionStatus.Rejected));
+        Assert.That(result.GetProperty(ProtocolField.Error).GetProperty(ProtocolField.Code).GetString(), Is.EqualTo(ProtocolErrorCode.InvalidArguments));
         Assert.That(count(), Is.EqualTo(0));
     }
 
@@ -69,19 +69,19 @@ public class GatewayTcpTests
     {
         await using var gateway = CreateGateway(out var count);
         gateway.Start();
-        await using var raw = await TcpJsonConnection.ConnectAsync("127.0.0.1", gateway.TcpPort!.Value, 262144);
-        var hello = Request("hello", "protocol.hello", new HelloPayload(["0.1"], new ClientInfo("test", "test")));
+        await using var raw = await TcpJsonConnection.ConnectAsync("127.0.0.1", gateway.TcpPort!.Value, ProtocolLimits.Default.MaxMessageBytes);
+        var hello = Request("hello", RequestType.ProtocolHello, new HelloPayload([ProtocolConstants.CurrentVersion], new ClientInfo("test", "test")));
         await raw.SendAsync(hello);
         _ = await raw.ReceiveAsync<ProtocolResponse>();
-        var login = Request("login", "auth.login", new LoginPayload("sharedSecret", "test-secret"));
+        var login = Request("login", RequestType.AuthLogin, new LoginPayload(AuthMethod.SharedSecret, "test-secret"));
         await raw.SendAsync(login);
         var loginResponse = await raw.ReceiveAsync<ProtocolResponse>();
-        var token = loginResponse!.Result!.Value.GetProperty("accessToken").GetString();
-        var payload = JsonSerializer.SerializeToElement(new { commandId = "demo.echo", arguments = new { value = "once" } }, ProtocolJson.Options);
-        var invoke = new ProtocolRequest("0.1", "same-id", "command.invoke", payload, token);
+        var token = loginResponse!.Result!.Value.GetProperty(ProtocolField.AccessToken).GetString();
+        var payload = JsonSerializer.SerializeToElement(new CommandInvokePayload("demo.echo", JsonSerializer.SerializeToElement(new { value = "once" })), ProtocolJson.Options);
+        var invoke = new ProtocolRequest(ProtocolConstants.CurrentVersion, "same-id", RequestType.CommandInvoke, payload, token);
         await raw.SendAsync(invoke); var first = await raw.ReceiveAsync<ProtocolResponse>();
         await raw.SendAsync(invoke); var second = await raw.ReceiveAsync<ProtocolResponse>();
-        Assert.That(second!.Result!.Value.GetProperty("output").GetProperty("echo").GetString(), Is.EqualTo(first!.Result!.Value.GetProperty("output").GetProperty("echo").GetString()));
+        Assert.That(second!.Result!.Value.GetProperty(ProtocolField.Output).GetProperty("echo").GetString(), Is.EqualTo(first!.Result!.Value.GetProperty(ProtocolField.Output).GetProperty("echo").GetString()));
         Assert.That(count(), Is.EqualTo(1));
     }
 
@@ -99,5 +99,5 @@ public class GatewayTcpTests
     }
 
     private static ProtocolRequest Request<T>(string id, string type, T payload) =>
-        new("0.1", id, type, JsonSerializer.SerializeToElement(payload, ProtocolJson.Options));
+        new(ProtocolConstants.CurrentVersion, id, type, JsonSerializer.SerializeToElement(payload, ProtocolJson.Options));
 }

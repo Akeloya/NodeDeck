@@ -1,140 +1,140 @@
-# NodeDeck — Roadmap
+# NodeDeck Roadmap
 
-> **Статус:** план разработки. Сроки намеренно не зафиксированы: этап считается завершённым по проверяемым критериям, а не по дате.
+> **Status** — Development plan. Each phase ends when it meets its acceptance criteria. There are no fixed deadlines.
 
-NodeDeck — открытый offline-first протокол и набор реализаций для предоставления команд, состояний, событий и динамических экранов управления без разработки отдельного мобильного приложения для каждой системы.
+NodeDeck is an open, offline-first protocol and a set of implementations that expose commands, state, events, and dynamic control screens. A single mobile client can operate different systems.
 
-**Архитектурный принцип:** шлюз встроен в приложение или устройство и сам публикует свои возможности. В дальнейшем один шлюз может подключаться к другому и агрегировать его команды и состояния. Поддержка интернета и Telegram не является условием работы локальных команд.
+Each application or device embeds a gateway that publishes its own capabilities. In a later phase, one gateway will be able to connect to another and aggregate its commands and state. Local commands work independently of the internet and Telegram.
 
-## Приоритеты
+## Priorities
 
-1. **P0 — WPF MVP:** заменить Bluetooth-клавиатуру мобильным клиентом, работающим по Wi-Fi и Bluetooth LE, и испытать решение на реальном приложении со множеством экранов и команд.
-2. **P1 — ESP32-S3 MVP:** освоить ESP-IDF и реализовать локальное управление макетом света и ворот по Wi-Fi; затем безопасно интегрировать со штатным приводом ворот.
-3. **P2 — Объединение шлюзов:** подключать ESP32, Raspberry Pi и WPF-приложения через шлюз-агрегатор.
-4. **P3 — Интернет и Telegram:** защищённый удалённый доступ, затем адаптер существующего Telegram-шлюза.
+1. **P0 — WPF MVP.** Replace the Bluetooth keyboard with a mobile client that works over Wi-Fi and Bluetooth LE. Test it with a real application that has many screens and commands.
+2. **P1 — ESP32-S3 MVP.** Learn ESP-IDF and control a lighting and gate prototype locally over Wi-Fi. Then integrate it safely with the existing gate drive.
+3. **P2 — Gateway aggregation.** Connect ESP32 devices, Raspberry Pi devices, and WPF applications through an aggregating gateway.
+4. **P3 — Internet and Telegram.** Add secure remote access, followed by an adapter for the existing Telegram gateway.
 
-Ветки WPF и ESP32 могут разрабатываться параллельно после стабилизации минимального протокола. **ESP32 не блокирует WPF MVP:** плата ещё в доставке.
+WPF and ESP32 development can proceed in parallel once the minimal protocol is stable. Work on the WPF MVP can proceed while the ESP32 board is in transit.
 
-## Phase 0 — Минимальный контракт протокола
+## Phase 0 — Minimal protocol contract
 
-- [ ] Определить версию протокола и формат сообщений (`requestId`, `type`, `payload`, `result`/`error`).
-- [ ] Описать `capabilities`: зарегистрированные команды, аргументы, состояния, события.
-- [ ] Описать декларативную UI-схему: экраны, группы, кнопки, переключатели, индикаторы; стабильные идентификаторы команд, не зависящие от расположения кнопки.
-- [ ] Отделить **описание экрана** от **динамической доступности** и **проверки прав непосредственно при выполнении**.
-- [ ] Определить идентификацию клиента, привязку устройства, права, отзыв доступа и подтверждение опасных действий.
-- [ ] Определить ответы `accepted` / `completed` / `rejected`, ошибки, таймауты и защиту от повторного выполнения команд с одинаковым `requestId`.
-- [ ] Подготовить тестовые JSON-сообщения и единый набор проверок совместимости для .NET и ESP32.
+- [ ] Define the protocol version and message format (`requestId`, `type`, `payload`, and `result` or `error`).
+- [ ] Describe registered commands, arguments, state, and events in `capabilities`.
+- [ ] Define a declarative UI schema for screens, groups, buttons, switches, and indicators. Give commands stable identifiers independent of button placement.
+- [ ] Define the screen description, dynamic command availability, and execution-time permission checks separately.
+- [ ] Define client identification, device pairing, permissions, access revocation, and confirmation for hazardous actions.
+- [ ] Define `accepted`, `completed`, and `rejected` responses, errors, timeouts, and protection against executing a command twice with the same `requestId`.
+- [ ] Prepare JSON test messages and a shared conformance suite for .NET and ESP32.
 
-**Готово, когда:** демонстрационный клиент может получить схему, состояние и выполнить команду через стабильный, документированный контракт; неизвестные команды и некорректные аргументы отклоняются.
+**Acceptance criteria.** A demo client can retrieve the schema and current state and execute a command through a stable, documented contract. The gateway rejects unknown commands and invalid arguments.
 
-## Phase 1 — WPF MVP по Wi-Fi (P0)
+## Phase 1 — WPF MVP over Wi-Fi (P0)
 
-- [ ] Реализовать `NodeDeck.Core` и встраиваемый `NodeDeck.AspNetCore` / `NodeDeck.Hosting` для .NET 8+.
-- [ ] Добавить регистрацию команд, обработчики `async`, публикацию состояний и событий.
-- [ ] Подключить существующую инфраструктуру шорткатов WPF через **те же прикладные обработчики**, что используют кнопки/горячие клавиши; операции, затрагивающие UI, выполнять через `Dispatcher`.
-- [ ] Реализовать локальный транспорт HTTP + WebSocket/SignalR и переподключение клиента.
-- [ ] Создать минимальный Android-клиент: список шлюзов, динамические экраны, кнопки, текущие состояния и ошибки.
-- [ ] Сделать первичную привязку через QR-код с короткоживущим одноразовым токеном.
-- [ ] Первоначально хранить UI-схемы в JSON; **визуальный редактор не блокирует MVP**.
-- [ ] Протестировать несколько экранов, одинаковые визуальные действия с разными командами, смену контекста WPF и недоступность команд.
-- [ ] Проверить работу в локальной сети **без доступа в интернет**.
+- [ ] Implement `NodeDeck.Core` and embeddable `NodeDeck.AspNetCore` / `NodeDeck.Hosting` for .NET 8+.
+- [ ] Add command registration, asynchronous handlers, and publication of state and events.
+- [ ] Connect the existing WPF shortcut infrastructure to the same application handlers used by buttons and hotkeys. Run UI operations through the `Dispatcher`.
+- [ ] Implement local HTTP and WebSocket/SignalR transport and client reconnection.
+- [ ] Build a minimal Android client with a gateway list, dynamic screens, buttons, current state, and error reporting.
+- [ ] Pair devices initially using a QR code containing a short-lived, single-use token.
+- [ ] Store UI schemas in JSON initially. Defer the visual editor until after the MVP if needed.
+- [ ] Test multiple screens, visually identical actions mapped to different commands, WPF context changes, and unavailable commands.
+- [ ] Test on a local network with internet access disconnected.
 
-**Готово, когда:** с Android можно выбирать экраны и надёжно выполнять реальные команды WPF без эмуляции клавиатуры, а отключение интернета не нарушает локальное управление.
+**Acceptance criteria.** An Android user can select screens and reliably execute real WPF commands without keyboard emulation. Local control continues when internet access is lost.
 
-## Phase 2 — WPF MVP по Bluetooth LE (P0)
+## Phase 2 — WPF MVP over Bluetooth LE (P0)
 
-- [ ] Исследовать роли BLE GATT и возможности **реальных Bluetooth-адаптеров Windows-компьютеров**, на которых работает WPF; проверить совместимость до выбора окончательной топологии.
-- [ ] Реализовать транспорт BLE с общими моделями команд и состояний, не зависящими от Wi-Fi.
-- [ ] Добавить фрагментацию сообщений, ограничения размера, таймауты, подтверждение доставки и переподключение.
-- [ ] Добавить безопасную привязку устройств, аутентификацию и защиту от повторного воспроизведения команд на уровне протокола.
-- [ ] Реализовать переключение Wi-Fi/BLE без смены экрана или идентификаторов команд.
-- [ ] Проверить несколько физических Android-устройств и штатные условия работы WPF-приложения.
-- [ ] Зафиксировать ограничения фоновой работы и доставки уведомлений на Android; не обещать гарантированную доставку при отключённом соединении.
+- [ ] Investigate BLE GATT roles and test the Bluetooth adapters on the Windows computers that run WPF before choosing the final topology.
+- [ ] Implement a BLE transport that uses the shared command and state models independently of Wi-Fi.
+- [ ] Add message fragmentation, size limits, timeouts, delivery acknowledgments, and reconnection.
+- [ ] Add secure device pairing, authentication, and protocol-level protection against replayed commands.
+- [ ] Allow switching between Wi-Fi and BLE while retaining the current screen and command identifiers.
+- [ ] Test several physical Android devices under normal WPF application operating conditions.
+- [ ] Document Android background execution and notification delivery limits, including the lack of guaranteed delivery while disconnected.
 
-**Готово, когда:** при полностью недоступном Wi-Fi подключённый смартфон управляет теми же WPF-командами по BLE. Повторная передача пакета не приводит к непреднамеренному повторному запуску действия.
+**Acceptance criteria.** With Wi-Fi completely unavailable, a connected phone controls the same WPF commands over BLE. Retransmitting a packet does not accidentally execute the action twice.
 
-## Phase 3 — ESP32-S3: освоение платформы и локальный MVP (P1)
+## Phase 3 — ESP32-S3 platform bring-up and local MVP (P1)
 
-### 3.1. Учебный стенд
+### 3.1. Test bench
 
-- [ ] После получения ESP32-S3 установить **ESP-IDF**, собрать, прошить и запустить `hello_world`; освоить serial monitor, логи и отладку.
-- [ ] Изучить GPIO, входы/выходы, безопасные уровни при старте/перезагрузке и watchdog.
-- [ ] Собрать низковольтный макет на светодиодах/релейном модуле **без подключения к воротам или сетевому напряжению**.
-- [ ] Подключить ESP32-S3 к локальной Wi-Fi сети и запустить минимальный HTTP/WebSocket сервис.
+- [ ] When the ESP32-S3 arrives, install **ESP-IDF**, build, flash, and run `hello_world`, and learn to use the serial monitor, logs, and debugger.
+- [ ] Explore GPIO inputs and outputs, safe output levels at startup and reset, and the watchdog.
+- [ ] Build a low-voltage prototype with LEDs or a relay module. Keep the gate and mains voltage disconnected.
+- [ ] Connect the ESP32-S3 to the local Wi-Fi network and start a minimal HTTP/WebSocket service.
 
 ### 3.2. NodeDeck Embedded Gateway
 
-- [ ] Реализовать минимальный контракт команд, состояний и UI-схем на C/C++ с ESP-IDF.
-- [ ] Сделать команды `light.on`, `light.off`, `gate.trigger` на **симуляторе** и состояния `light.state`, `gate.state`.
-- [ ] Пройти те же protocol conformance tests, что и .NET Gateway.
-- [ ] Проверить Android-клиент с ESP32 **без специальных экранов и логики под ESP32**.
-- [ ] Добавить локальную авторизацию, ограничения частоты команд и безопасное состояние выходов при сбоях.
+- [ ] Implement the minimal command, state, and UI schema contract in C/C++ using ESP-IDF.
+- [ ] Implement `light.on`, `light.off`, and `gate.trigger` on the **simulator**, with `light.state` and `gate.state` reporting their state.
+- [ ] Pass the same protocol conformance tests as the .NET gateway.
+- [ ] Test the Android client against the ESP32 using the standard screens and client logic.
+- [ ] Add local authorization, command rate limits, and safe output states on failure.
 
-### 3.3. Реальные ворота и свет
+### 3.3. Physical gate and lighting
 
-- [ ] Изучить документацию штатного контроллера ворот: предусмотренный вход внешнего управления, сигналы состояния и требования безопасности.
-- [ ] Подключать ESP32 **только к предусмотренному интерфейсу управления**, с нужной гальванической развязкой и электрической защитой; не заменять контроллер привода и его защитные цепи.
-- [ ] Сохранить работоспособность штатного управления, концевиков, фотоэлементов, защиты от препятствий и ручной разблокировки.
-- [ ] Для удалённой команды явно определять разрешённый сценарий и подтверждение; различать «команда принята» и «ворота действительно открыты/закрыты» по датчикам, если они имеются.
-- [ ] Проверить потерю питания, перезагрузку, обрыв связи, повтор команды и неверные состояния датчиков.
-- [ ] Управление сетевым освещением реализовывать через рассчитанные на нагрузку сертифицированные устройства коммутации с соблюдением электробезопасности.
+- [ ] Review the gate controller documentation for its external control input, status signals, and safety requirements.
+- [ ] Connect the ESP32 only through the designated control interface, with the required galvanic isolation and electrical protection. Keep the drive controller and its safety circuits in place.
+- [ ] Preserve the existing controls, limit switches, photocells, obstacle protection, and manual release.
+- [ ] Define when remote commands are allowed and how they are confirmed. Where sensors are available, distinguish command acceptance from confirmation that the gate has opened or closed.
+- [ ] Test power loss, restart, disconnection, duplicate commands, and invalid sensor states.
+- [ ] Switch mains lighting using certified switching devices rated for the load and follow electrical safety requirements.
 
-**Готово, когда:** тот же Android-клиент управляет локальным ESP32-шлюзом; макет стабильно проходит тесты, а подключение к реальным воротам выполнено только после проверки штатных защит и безопасного отказа. **Интернет для этого этапа не нужен.**
+**Acceptance criteria.** The same Android client controls the local ESP32 gateway, and the prototype passes its tests consistently. Connect to the physical gate only after verifying the existing safeguards and safe behavior on failure. This phase works offline.
 
-> ESP32-S3 поддерживает Wi-Fi и **Bluetooth LE**, но не Bluetooth Classic. BLE на ESP32 — отдельный дополнительный этап, не блокирующий локальный Wi-Fi MVP.
+> The ESP32-S3 supports Wi-Fi and Bluetooth LE. It lacks Bluetooth Classic support. BLE on ESP32 is a separate, optional phase that can follow the local Wi-Fi MVP.
 
-## Phase 4 — Gateway-to-Gateway и Raspberry Pi (P2)
+## Phase 4 — Gateway-to-gateway communication and Raspberry Pi (P2)
 
-- [ ] Определить Gateway Client API: обнаружение, подключение, получение `capabilities`, подписка на состояния и вызов удалённых команд.
-- [ ] Реализовать шлюз-агрегатор на .NET под Windows/Linux; проверить развёртывание на Raspberry Pi.
-- [ ] Обеспечить устойчивую адресацию вида `gatewayId/commandId`, чтобы команды разных устройств не конфликтовали.
-- [ ] Пробрасывать состояния и ошибки с указанием источника; обозначать состояние `offline` для потерявших связь узлов.
-- [ ] Предотвращать циклы маршрутизации; проверять права на каждом маршрутизируемом вызове.
-- [ ] Испытать связку **WPF ↔ Gateway ↔ ESP32**, затем добавить Raspberry Pi.
+- [ ] Define a Gateway Client API for discovery, connection, `capabilities` retrieval, state subscriptions, and remote command invocation.
+- [ ] Implement an aggregating gateway in .NET for Windows and Linux, and verify deployment on Raspberry Pi.
+- [ ] Use stable addresses such as `gatewayId/commandId` to distinguish commands from different devices.
+- [ ] Forward state and errors with their source and mark disconnected nodes as `offline`.
+- [ ] Prevent routing loops and check permissions on every routed invocation.
+- [ ] Test **WPF ↔ Gateway ↔ ESP32**, then add Raspberry Pi.
 
-**Готово, когда:** единый клиент видит несколько узлов и их экраны через агрегатор, а прямой доступ к отдельному узлу остаётся возможным.
+**Acceptance criteria.** One client can see multiple nodes and their screens through the aggregator. Each node also remains directly accessible.
 
-## Phase 5 — Удалённый доступ через интернет (P3)
+## Phase 5 — Remote access over the internet (P3)
 
-- [ ] Выбрать защищённый канал удалённого доступа (например, VPN или исходящее соединение узла к доверенному серверу), **без прямого проброса незащищённого ESP32 API в интернет**.
-- [ ] Ввести роли, управление ключами/сертификатами, аудит действий и отзыв устройств.
-- [ ] Для ворот установить отдельные ограничения на удалённые команды, необходимость подтверждения и реакцию на отсутствие достоверного состояния.
-- [ ] Испытать медленный и нестабильный интернет, задержки, дубли сообщений и потерю подтверждений.
+- [ ] Choose a secure remote access channel, such as a VPN or an outbound connection to a trusted server. Keep the unsecured ESP32 API off the public internet.
+- [ ] Add roles, key and certificate management, action auditing, and device revocation.
+- [ ] Define gate-specific restrictions for remote commands, confirmation requirements, and behavior when reliable state is unavailable.
+- [ ] Test slow and unstable connections, delays, duplicate messages, and lost acknowledgments.
 
-**Готово, когда:** авторизованный пользователь может управлять разрешёнными устройствами извне, а локальный доступ остаётся рабочим при потере интернета.
+**Acceptance criteria.** Authorized users can control permitted devices remotely. Local access continues when the internet connection fails.
 
-## Phase 6 — Telegram как необязательный адаптер (P3)
+## Phase 6 — Optional Telegram adapter (P3)
 
-- [ ] Задокументировать существующий Telegram-шлюз и ограничения текущей реализации.
-- [ ] Реализовать адаптер Telegram ↔ NodeDeck через **общий Command API**, без отдельной реализации логики каждого устройства.
-- [ ] Сопоставить пользователей/чаты с правами NodeDeck; применить строгий allowlist команд.
-- [ ] Добавить подтверждение критичных действий, защиту от повторов, таймауты и журналирование.
-- [ ] При необходимости добавить события, уведомления и очередь сообщений; сообщения об ошибках доставки не должны маскироваться как успешное выполнение команды.
+- [ ] Document the existing Telegram gateway and its limitations.
+- [ ] Implement a Telegram ↔ NodeDeck adapter through the shared Command API so each device uses its existing command logic.
+- [ ] Map Telegram users and chats to NodeDeck permissions and enforce a strict command allowlist.
+- [ ] Add confirmation for critical actions, replay protection, timeouts, and logging.
+- [ ] Add events, notifications, and a message queue if needed. Report delivery failures distinctly from successful command execution.
 
-**Готово, когда:** Telegram вызывает те же проверяемые команды NodeDeck, что и локальный клиент, а отключение Telegram не влияет на работу шлюзов.
+**Acceptance criteria.** Telegram invokes the same commands with the same checks as the local client. Gateways continue to operate when Telegram is disconnected.
 
-## Later / Backlog
+## Backlog
 
-- [ ] Визуальный редактор UI-схем (WPF, Avalonia или web — решение позже).
-- [ ] Экспорт, импорт и версия схем экранов; валидация на основании реально зарегистрированных команд.
-- [ ] Дополнительные элементы интерфейса, локализация и темы оформления.
-- [ ] Уведомления от приложений, история событий и подтверждение оператором.
-- [ ] Передача фото/файлов и интеграция с чатами через сменяемые провайдеры.
-- [ ] Полноценный BLE-транспорт ESP32, если сценарии этого потребуют.
-- [ ] NuGet-публикация SDK, документация интеграции, примеры и автоматические релизы.
+- [ ] Build a visual UI schema editor. Choose between WPF, Avalonia, and the web later.
+- [ ] Support screen schema export, import, and versioning. Validate schemas against the commands actually registered.
+- [ ] Add more controls, localization, and themes.
+- [ ] Add application notifications, event history, and operator acknowledgment.
+- [ ] Support photo and file transfers and chat integration through interchangeable providers.
+- [ ] Implement a full ESP32 BLE transport if use cases require it.
+- [ ] Publish the SDK on NuGet and provide integration documentation, examples, and automated releases.
 
-## Правила развития проекта
+## Project principles
 
-- **Protocol-first:** общий контракт и тесты совместимости, независимые реализации .NET и ESP-IDF; не создавать обязательную C++-обёртку для .NET.
-- **Offline-first:** локальные команды не зависят от облака, Telegram или общего интернет-шлюза.
-- **Security-by-default:** UI не является механизмом авторизации; доступность и права проверяются шлюзом при каждом вызове.
-- **Safety-first:** NodeDeck не отвечает за физическую защиту механизма ворот и не должен обходить штатные аппаратные защиты.
-- **Thin clients:** Android отображает переданную схему; команды и правила принадлежат шлюзу.
-- **Incremental delivery:** каждый MVP проверяется на реальном оборудовании, но опасные операции сначала отрабатываются на макете.
+- **Protocol first.** .NET and ESP-IDF have independent implementations with a shared contract and conformance tests. The .NET implementation must be usable without a C++ wrapper.
+- **Offline first.** Local commands work independently of the cloud, Telegram, and any shared internet gateway.
+- **Security by default.** The gateway checks availability and permissions on each invocation, regardless of what the UI displays.
+- **Safety first.** The gate's existing hardware safeguards provide physical protection. NodeDeck must preserve them and must never bypass them.
+- **Thin clients.** Android renders the supplied schema. The gateway owns commands and rules.
+- **Incremental delivery.** Test each MVP on real hardware and exercise hazardous operations on a prototype first.
 
-## Полезные ссылки
+## References
 
-- [ESP-IDF: Getting Started for ESP32-S3](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/start-project.html)
+- [ESP-IDF getting started guide for ESP32-S3](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/start-project.html)
 - [ESP32-S3 hardware overview](https://www.espressif.com/products/socs/esp32-s3)
 - [ESP-IDF HTTP Server](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/protocols/esp_http_server.html)
 - [ESP-IDF NimBLE GATT Server example](https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/ble_get_started/nimble/NimBLE_GATT_Server)
