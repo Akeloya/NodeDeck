@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "NodeDeck.Console - TCP": {
+      "commandName": "Project",
+      "commandLineArgs": "--debug-profile tcp --bind 0.0.0.0 --port 5050"
+    },
+    "NodeDeck.Console - Bluetooth LE": {
+      "commandName": "Project",
+      "commandLineArgs": "--debug-profile bluetooth"
+    }
+  }
+}

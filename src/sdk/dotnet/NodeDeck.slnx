@@ -10,4 +10,5 @@
   <Project Path="NodeDeck.Protocol/NodeDeck.Protocol.csproj" />
   <Project Path="NodeDeck.Transport.Ble.Windows/NodeDeck.Transport.Ble.Windows.csproj" Id="48bd2851-5197-4868-ac4e-f1582fc2d610" />
   <Project Path="NodeDeck.Transport.Tcp/NodeDeck.Transport.Tcp.csproj" Id="8758610a-36bb-4ce8-affd-f165780d36e3" />
+  <Project Path="NodeDeck.Tests/NodeDeck.Tests.csproj" />
 </Solution>

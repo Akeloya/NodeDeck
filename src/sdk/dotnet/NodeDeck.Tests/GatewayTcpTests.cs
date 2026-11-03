@@ -1,0 +1,103 @@
+using System.Net;
+using System.Text.Json;
+using NUnit.Framework;
+using NodeDeck.Client;
+using NodeDeck.Gateway;
+using NodeDeck.Protocol;
+using NodeDeck.Transport.Tcp;
+using ProtocolValueType = NodeDeck.Protocol.ValueType;
+
+namespace NodeDeck.Tests;
+
+public class GatewayTcpTests
+{
+    private static readonly ValueDescriptor Arguments = new()
+    {
+        Type = ProtocolValueType.Object,
+        Properties = new Dictionary<string, ValueDescriptor> { ["value"] = new() { Type = ProtocolValueType.String, MinLength = 1 } },
+        Required = ["value"], AdditionalProperties = false
+    };
+    private static readonly ValueDescriptor Result = new()
+    {
+        Type = ProtocolValueType.Object,
+        Properties = new Dictionary<string, ValueDescriptor> { ["echo"] = new() { Type = ProtocolValueType.String } },
+        Required = ["echo"], AdditionalProperties = false
+    };
+
+    [Test]
+    public async Task TcpConnection_RoundTripsJsonFrame()
+    {
+        await using var server = new TcpJsonServer(IPAddress.Loopback, 0);
+        server.Start();
+        var accepted = server.AcceptAsync();
+        await using var client = await TcpJsonConnection.ConnectAsync("127.0.0.1", server.Port);
+        await using var peer = await accepted;
+        var sent = new { value = "hello" };
+        await client.SendAsync(sent);
+        await client.SendAsync(new { value = "second frame" });
+        var received = await peer.ReceiveAsync<Dictionary<string, string>>();
+        Assert.That(received!["value"], Is.EqualTo("hello"));
+        var next = await peer.ReceiveAsync<Dictionary<string, string>>();
+        Assert.That(next!["value"], Is.EqualTo("second frame"));
+    }
+
+    [Test]
+    public async Task ClientAndGateway_AuthenticateAndReturnCommandResult()
+    {
+        await using var gateway = CreateGateway(out _);
+        gateway.Start();
+        await using var client = await NodeDeckClientConnection.ConnectAsync("127.0.0.1", gateway.TcpPort!.Value, "test-secret");
+        var result = await client.InvokeAsync("demo.echo", new { value = "from phone" });
+        Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("completed"));
+        Assert.That(result.GetProperty("output").GetProperty("echo").GetString(), Is.EqualTo("from phone"));
+    }
+
+    [Test]
+    public async Task Gateway_RejectsInvalidArgumentsWithoutRunningHandler()
+    {
+        await using var gateway = CreateGateway(out var count);
+        gateway.Start();
+        await using var client = await NodeDeckClientConnection.ConnectAsync("127.0.0.1", gateway.TcpPort!.Value, "test-secret");
+        var result = await client.InvokeAsync("demo.echo", new { unexpected = 1 });
+        Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("rejected"));
+        Assert.That(result.GetProperty("error").GetProperty("code").GetString(), Is.EqualTo("invalid_arguments"));
+        Assert.That(count(), Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task Gateway_DeduplicatesRetriedRequestId()
+    {
+        await using var gateway = CreateGateway(out var count);
+        gateway.Start();
+        await using var raw = await TcpJsonConnection.ConnectAsync("127.0.0.1", gateway.TcpPort!.Value, 262144);
+        var hello = Request("hello", "protocol.hello", new HelloPayload(["0.1"], new ClientInfo("test", "test")));
+        await raw.SendAsync(hello);
+        _ = await raw.ReceiveAsync<ProtocolResponse>();
+        var login = Request("login", "auth.login", new LoginPayload("sharedSecret", "test-secret"));
+        await raw.SendAsync(login);
+        var loginResponse = await raw.ReceiveAsync<ProtocolResponse>();
+        var token = loginResponse!.Result!.Value.GetProperty("accessToken").GetString();
+        var payload = JsonSerializer.SerializeToElement(new { commandId = "demo.echo", arguments = new { value = "once" } }, ProtocolJson.Options);
+        var invoke = new ProtocolRequest("0.1", "same-id", "command.invoke", payload, token);
+        await raw.SendAsync(invoke); var first = await raw.ReceiveAsync<ProtocolResponse>();
+        await raw.SendAsync(invoke); var second = await raw.ReceiveAsync<ProtocolResponse>();
+        Assert.That(second!.Result!.Value.GetProperty("output").GetProperty("echo").GetString(), Is.EqualTo(first!.Result!.Value.GetProperty("output").GetProperty("echo").GetString()));
+        Assert.That(count(), Is.EqualTo(1));
+    }
+
+    private static GatewayServer CreateGateway(out Func<int> count)
+    {
+        var executions = 0;
+        count = () => Volatile.Read(ref executions);
+        var definition = new CommandDefinition("demo.echo", "Echo", null, Arguments, Result, new CommandAvailability(true));
+        return new GatewayBuilder("test-gateway", "Test Gateway", "test-secret")
+            .AddCommand(definition, (arguments, _) =>
+            {
+                Interlocked.Increment(ref executions);
+                return ValueTask.FromResult(JsonSerializer.SerializeToElement(new { echo = arguments.GetProperty("value").GetString() }));
+            }).Build(IPAddress.Loopback, 0);
+    }
+
+    private static ProtocolRequest Request<T>(string id, string type, T payload) =>
+        new("0.1", id, type, JsonSerializer.SerializeToElement(payload, ProtocolJson.Options));
+}
