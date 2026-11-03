@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\NodeDeck.Protocol\NodeDeck.Protocol.csproj" />
+    <ProjectReference Include="..\NodeDeck.Transport.Tcp\NodeDeck.Transport.Tcp.csproj" />
+  </ItemGroup>
+
 </Project>

@@ -9,6 +9,7 @@ Status: **draft contract**, not yet implemented in the SDK. This document define
 - [Complete capabilities example](examples/capabilities.json).
 - [Complete screen example](examples/screens.json).
 - [Message exchange sequence](examples/session.json).
+- [Initial .NET TCP and Bluetooth LE development profiles and run instructions](tcp-development.md).
 
 ## Connection flow
 
