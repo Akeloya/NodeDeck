@@ -212,7 +212,10 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
                         throw new IOException($"Phone BLE write failed: {status}.");
                 }
             }
-            finally { _writeLock.Release(); }
+            finally
+            {
+                _writeLock.Release();
+            }
         }
 
         public async Task<T?> ReceiveAsync<T>(CancellationToken cancellationToken = default)

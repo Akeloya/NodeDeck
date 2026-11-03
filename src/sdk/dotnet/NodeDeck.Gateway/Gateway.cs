@@ -17,10 +17,12 @@ public sealed class GatewayBuilder(string gatewayId, string name, string sharedS
     private readonly List<GatewayCommand> _commands = [];
     public GatewayBuilder AddCommand(CommandDefinition definition, GatewayCommandHandler handler)
     {
-        ArgumentNullException.ThrowIfNull(definition); ArgumentNullException.ThrowIfNull(handler);
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(handler);
         if (_commands.Any(x => x.Definition.Id == definition.Id))
             throw new ArgumentException($"Command '{definition.Id}' already exists.");
-        _commands.Add(new GatewayCommand(definition, handler)); return this;
+        _commands.Add(new GatewayCommand(definition, handler));
+        return this;
     }
     public GatewayServer Build(IPAddress address, int port, string? description = null) =>
         new(gatewayId, name, description, sharedSecret, _commands, new TcpJsonServer(address, port, 262144));
@@ -52,9 +54,13 @@ public sealed class GatewayServer : IAsyncDisposable
     internal GatewayServer(string gatewayId, string name, string? description, string sharedSecret,
         IEnumerable<GatewayCommand> commands, IProtocolMessageListener listener)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(gatewayId); ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gatewayId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(sharedSecret);
-        _gatewayId = gatewayId; _name = name; _description = description; _sharedSecret = sharedSecret;
+        _gatewayId = gatewayId;
+        _name = name;
+        _description = description;
+        _sharedSecret = sharedSecret;
         _commands = commands.ToDictionary(x => x.Definition.Id, StringComparer.Ordinal);
         _capabilities = new CapabilitiesDocument(new GatewayInfo(gatewayId, name, description), _capabilitiesRevision,
             [ProtocolFeature.Commands, ProtocolFeature.OperationsPoll, ProtocolFeature.Ui], ProtocolLimits.Default,
@@ -92,13 +98,28 @@ public sealed class GatewayServer : IAsyncDisposable
             {
                 var connection = await _listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
                 var task = HandleConnectionAsync(connection, cancellationToken);
-                lock (_tasksLock) _connections.Add(task);
-                _ = task.ContinueWith(t => { lock (_tasksLock) _connections.Remove(t); _ = t.Exception; },
+                lock (_tasksLock)
+                    _connections.Add(task);
+                _ = task.ContinueWith(t =>
+                {
+                    lock (_tasksLock)
+                        _connections.Remove(t);
+                    _ = t.Exception;
+                },
                     CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
-            catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested) { break; }
-            catch (SocketException) when (cancellationToken.IsCancellationRequested) { break; }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (SocketException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 
@@ -112,7 +133,10 @@ public sealed class GatewayServer : IAsyncDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 ProtocolRequest? request;
-                try { request = await connection.ReceiveAsync<ProtocolRequest>(cancellationToken).ConfigureAwait(false); }
+                try
+                {
+                    request = await connection.ReceiveAsync<ProtocolRequest>(cancellationToken).ConfigureAwait(false);
+                }
                 catch (ProtocolValidationException ex)
                 {
                     // Malformed messages without a trustworthy requestId cannot be correlated safely.
@@ -164,9 +188,19 @@ public sealed class GatewayServer : IAsyncDisposable
                 {
                     response = ProtocolResponse.Failure(request, new ProtocolError(ProtocolErrorCode.InternalError, "The gateway could not process the request.", false));
                 }
-                try { ProtocolValidator.ValidateResponse(response, maxBytes); await connection.SendAsync(response, cancellationToken).ConfigureAwait(false); }
-                catch (ProtocolValidationException) { break; }
-                catch (IOException) { break; }
+                try
+                {
+                    ProtocolValidator.ValidateResponse(response, maxBytes);
+                    await connection.SendAsync(response, cancellationToken).ConfigureAwait(false);
+                }
+                catch (ProtocolValidationException)
+                {
+                    break;
+                }
+                catch (IOException)
+                {
+                    break;
+                }
             }
         }
     }
@@ -197,9 +231,12 @@ public sealed class GatewayServer : IAsyncDisposable
                 if (request.AccessToken is { } logoutToken)
                     _sessions.TryRemove(logoutToken, out _);
                 return ProtocolResponse.Success(request, new LogoutResult(true));
-            case RequestType.CapabilitiesGet: return ProtocolResponse.Success(request, _capabilities);
-            case RequestType.UiGet: return ProtocolResponse.Success(request, _ui);
-            case RequestType.CommandInvoke: return await InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+            case RequestType.CapabilitiesGet:
+                return ProtocolResponse.Success(request, _capabilities);
+            case RequestType.UiGet:
+                return ProtocolResponse.Success(request, _ui);
+            case RequestType.CommandInvoke:
+                return await InvokeAsync(request, cancellationToken).ConfigureAwait(false);
             case RequestType.OperationGet:
             {
                 var payload = request.Payload.Deserialize<OperationGetPayload>(ProtocolJson.Options);
@@ -207,7 +244,8 @@ public sealed class GatewayServer : IAsyncDisposable
                     throw new OperationNotFoundException("Operation not found.");
                 return ProtocolResponse.Success(request, operation);
             }
-            default: return ProtocolResponse.Failure(request, new ProtocolError(ProtocolErrorCode.UnsupportedType, "Unknown request type.", false));
+            default:
+                return ProtocolResponse.Failure(request, new ProtocolError(ProtocolErrorCode.UnsupportedType, "Unknown request type.", false));
         }
     }
 
@@ -219,8 +257,14 @@ public sealed class GatewayServer : IAsyncDisposable
         var fingerprint = Canonicalize(request.Payload);
         var reservation = _dedupLocks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
         await reservation.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try { return await InvokeReservedAsync(request, payload, key, fingerprint, cancellationToken).ConfigureAwait(false); }
-        finally { reservation.Release(); }
+        try
+        {
+            return await InvokeReservedAsync(request, payload, key, fingerprint, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            reservation.Release();
+        }
     }
 
     private async Task<ProtocolResponse> InvokeReservedAsync(ProtocolRequest request, CommandInvokePayload payload,
@@ -255,7 +299,10 @@ public sealed class GatewayServer : IAsyncDisposable
                         throw new InvalidOperationException("Handler returned an invalid result.");
                     response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Completed, result));
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
                 catch (Exception)
                 {
                     response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Failed, Error: new ProtocolError(ProtocolErrorCode.ExecutionFailed, "Command execution failed.", false)));
@@ -281,10 +328,20 @@ public sealed class GatewayServer : IAsyncDisposable
         _shutdown.Cancel();
         await _listener.DisposeAsync().ConfigureAwait(false);
         if (_acceptLoop is not null)
-            try { await _acceptLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
-        Task[] tasks; lock (_tasksLock) tasks = _connections.ToArray();
+            try
+            {
+                await _acceptLoop.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { }
+        Task[] tasks;
+        lock (_tasksLock)
+            tasks = _connections.ToArray();
         if (tasks.Length > 0)
-            try { await Task.WhenAll(tasks).ConfigureAwait(false); } catch { }
+            try
+            {
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
+            catch { }
         _shutdown.Dispose();
     }
 

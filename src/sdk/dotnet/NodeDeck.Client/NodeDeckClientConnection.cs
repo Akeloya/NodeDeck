@@ -41,7 +41,11 @@ public sealed class NodeDeckClientConnection : IAsyncDisposable
             client._accessToken = (login.Deserialize<LoginResult>(ProtocolJson.Options) ?? throw new InvalidResponseException("Gateway returned invalid login response.")).AccessToken;
             return client;
         }
-        catch { await client.DisposeAsync().ConfigureAwait(false); throw; }
+        catch
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     public Task<JsonElement> GetCapabilitiesAsync(CancellationToken cancellationToken = default) =>
@@ -52,7 +56,8 @@ public sealed class NodeDeckClientConnection : IAsyncDisposable
 
     public Task<JsonElement> InvokeAsync(string commandId, object arguments, string? uiRevision = null, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(commandId); ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentException.ThrowIfNullOrWhiteSpace(commandId);
+        ArgumentNullException.ThrowIfNull(arguments);
         return SendRequestAsync(RequestType.CommandInvoke, new CommandInvokePayload(commandId, JsonSerializer.SerializeToElement(arguments, ProtocolJson.Options), uiRevision), true, cancellationToken);
     }
 
@@ -76,14 +81,20 @@ public sealed class NodeDeckClientConnection : IAsyncDisposable
                 throw new GatewayRequestException(error);
             return response.Result ?? throw new InvalidResponseException("Gateway response omitted result.");
         }
-        finally { _requestLock.Release(); }
+        finally
+        {
+            _requestLock.Release();
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
         if (_accessToken is not null)
         {
-            try { await SendRequestAsync(RequestType.AuthLogout, new { }, true, CancellationToken.None).ConfigureAwait(false); }
+            try
+            {
+                await SendRequestAsync(RequestType.AuthLogout, new { }, true, CancellationToken.None).ConfigureAwait(false);
+            }
             catch { }
         }
         await _connection.DisposeAsync().ConfigureAwait(false);

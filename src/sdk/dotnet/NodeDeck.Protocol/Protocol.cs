@@ -63,7 +63,8 @@ public static class ProtocolJson
                 }
             }
             else if (element.ValueKind == JsonValueKind.Array)
-                foreach (var item in element.EnumerateArray()) Check(item);
+                foreach (var item in element.EnumerateArray())
+                    Check(item);
             else if (element.ValueKind == JsonValueKind.Number && (!element.TryGetDouble(out var value) || !double.IsFinite(value)))
                 throw new InvalidRequestException("Numbers must be finite.");
         }
@@ -126,10 +127,13 @@ public static class ProtocolValidator
             throw new InvalidRequestException($"maxMessageBytes must be at least {ProtocolConstants.InitialMaxMessageBytes}.");
         if (catalog.Limits.CommandResponseTimeoutMs <= 0 || catalog.Limits.MinPollIntervalMs < 0 || catalog.Limits.OperationRetentionMs < 0 || catalog.Limits.DeduplicationWindowMs < 0)
             throw new InvalidRequestException("Capability time limits are invalid.");
-        Unique(catalog.Commands.Select(x => x.Id), "command"); Unique(catalog.Resources.Select(x => x.Id), "resource"); Unique(catalog.Endpoints.Select(x => x.Id), "endpoint");
+        Unique(catalog.Commands.Select(x => x.Id), "command");
+        Unique(catalog.Resources.Select(x => x.Id), "resource");
+        Unique(catalog.Endpoints.Select(x => x.Id), "endpoint");
         foreach (var c in catalog.Commands)
         {
-            ValidateDescriptor(c.Parameters, "command parameters"); ValidateDescriptor(c.Result, "command result");
+            ValidateDescriptor(c.Parameters, "command parameters");
+            ValidateDescriptor(c.Result, "command result");
             if (c.Parameters.Type != ValueType.Object || c.Result.Type != ValueType.Object)
                 throw new InvalidRequestException("Command parameters and result must be objects.");
         }
@@ -141,7 +145,8 @@ public static class ProtocolValidator
                 throw new InvalidRequestException("Chat and custom endpoints require a contract.");
             ValidateAuth(endpoint.Auth, endpoint.Protocol);
         }
-        foreach (var resource in catalog.Resources) ValidateAuth(resource.Auth, EndpointProtocol.Https);
+        foreach (var resource in catalog.Resources)
+            ValidateAuth(resource.Auth, EndpointProtocol.Https);
     }
 
     public static void ValidateUi(UiDocument ui, CapabilitiesDocument capabilities)
@@ -191,7 +196,8 @@ public static class ProtocolValidator
                 }
                 else if (node.Layout.Kind == LayoutKind.Wrap && (node.Layout.ItemWidth is null || node.Layout.ItemWidth <= 0))
                     throw new InvalidRequestException("Wrap layout requires positive itemWidth.");
-                foreach (var child in node.Children) ValidateNode(child, screen, allScreens, allCommands, allResources, allEndpoints, nodes);
+                foreach (var child in node.Children)
+                    ValidateNode(child, screen, allScreens, allCommands, allResources, allEndpoints, nodes);
             }
             else if (node.Type == UiNodeType.Image && (node.ResourceId is null || !allResources.Contains(node.ResourceId)))
                 throw new InvalidRequestException($"Image '{node.Id}' references an unknown resource.");
@@ -225,7 +231,9 @@ public static class ProtocolValidator
                 if (action.ScreenId is null || !screens.ContainsKey(action.ScreenId))
                     throw new InvalidRequestException("navigate references an unknown screen.");
                 break;
-            case UiActionKind.Back: case UiActionKind.CloseDrawer: break;
+            case UiActionKind.Back:
+            case UiActionKind.CloseDrawer:
+                break;
             case UiActionKind.Invoke:
                 if (action.CommandId is null || !commands.TryGetValue(action.CommandId, out var command))
                     throw new InvalidRequestException("invoke references an unknown command.");
@@ -245,7 +253,8 @@ public static class ProtocolValidator
                 if (action.Then is not null)
                     ValidateAction(action.Then, screen, screens, commands, endpoints, nodes);
                 break;
-            default: break; // Unknown actions are unavailable to the client.
+            default:
+                break; // Unknown actions are unavailable to the client.
         }
         if (action.Wait is { } wait)
             ValidateWait(wait, false);
@@ -312,7 +321,8 @@ public static class ProtocolValidator
             foreach (var key in descriptor.Required)
                 if (!descriptor.Properties.ContainsKey(key))
                     throw new InvalidRequestException($"{path} required property '{key}' is not declared.");
-            foreach (var (key, child) in descriptor.Properties) ValidateDescriptor(child, $"{path}.{key}");
+            foreach (var (key, child) in descriptor.Properties)
+                ValidateDescriptor(child, $"{path}.{key}");
         }
         if (descriptor.Type == ValueType.Array)
         {
@@ -374,7 +384,8 @@ public static class ProtocolValidator
         }
         else if (descriptor.Type == ValueType.String)
         {
-            var text = value.GetString()!; var length = text.EnumerateRunes().Count();
+            var text = value.GetString()!;
+            var length = text.EnumerateRunes().Count();
             if (descriptor.MinLength is { } min && length < min)
                 errors.Add($"{path} is too short");
             if (descriptor.MaxLength is { } max && length > max)

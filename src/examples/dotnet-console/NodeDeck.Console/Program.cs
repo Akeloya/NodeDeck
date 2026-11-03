@@ -104,8 +104,14 @@ namespace NodeDeck.Console
 
                 if (bleListener is not null)
                 {
-                    try { await bleListener.Ready.WaitAsync(shutdown.Token); }
-                    catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { return 0; }
+                    try
+                    {
+                        await bleListener.Ready.WaitAsync(shutdown.Token);
+                    }
+                    catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+                    {
+                        return 0;
+                    }
                     catch (Exception ex)
                     {
                         System.Console.Error.WriteLine($"Bluetooth LE connection failed: {ex.GetBaseException().Message}");
@@ -115,7 +121,10 @@ namespace NodeDeck.Console
                 }
                 System.Console.WriteLine("Press Ctrl+C to stop.");
 
-                try { await gateway.RunAsync(shutdown.Token); }
+                try
+                {
+                    await gateway.RunAsync(shutdown.Token);
+                }
                 catch (OperationCanceledException) { /* Ctrl+C requests a graceful shutdown. */ }
             }
 

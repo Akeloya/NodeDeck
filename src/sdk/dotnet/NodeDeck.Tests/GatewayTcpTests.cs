@@ -79,8 +79,10 @@ public class GatewayTcpTests
         var token = loginResponse!.Result!.Value.GetProperty(ProtocolField.AccessToken).GetString();
         var payload = JsonSerializer.SerializeToElement(new CommandInvokePayload("demo.echo", JsonSerializer.SerializeToElement(new { value = "once" })), ProtocolJson.Options);
         var invoke = new ProtocolRequest(ProtocolConstants.CurrentVersion, "same-id", RequestType.CommandInvoke, payload, token);
-        await raw.SendAsync(invoke); var first = await raw.ReceiveAsync<ProtocolResponse>();
-        await raw.SendAsync(invoke); var second = await raw.ReceiveAsync<ProtocolResponse>();
+        await raw.SendAsync(invoke);
+        var first = await raw.ReceiveAsync<ProtocolResponse>();
+        await raw.SendAsync(invoke);
+        var second = await raw.ReceiveAsync<ProtocolResponse>();
         Assert.That(second!.Result!.Value.GetProperty(ProtocolField.Output).GetProperty("echo").GetString(), Is.EqualTo(first!.Result!.Value.GetProperty(ProtocolField.Output).GetProperty("echo").GetString()));
         Assert.That(count(), Is.EqualTo(1));
     }

@@ -146,7 +146,10 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
                 await _callback.WaitForNotificationAsync(cancellationToken);
             }
         }
-        finally { _notifyLock.Release(); }
+        finally
+        {
+            _notifyLock.Release();
+        }
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("android33.0")]
@@ -228,7 +231,11 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         public BluetoothGattCharacteristic? Tx { get; private set; }
         public BluetoothGattCharacteristic? Rx { get; private set; }
 
-        public void SetCharacteristics(BluetoothGattCharacteristic tx, BluetoothGattCharacteristic rx) { Tx = tx; Rx = rx; }
+        public void SetCharacteristics(BluetoothGattCharacteristic tx, BluetoothGattCharacteristic rx)
+        {
+            Tx = tx;
+            Rx = rx;
+        }
         public void BeginNotification() => _notificationSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task WaitForNotificationAsync(CancellationToken cancellationToken) =>
             (_notificationSent ?? throw new InvalidOperationException("No BLE notification is pending.")).Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);

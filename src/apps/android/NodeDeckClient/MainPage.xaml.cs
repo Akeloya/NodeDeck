@@ -101,15 +101,23 @@ public partial class MainPage : ContentPage
     {
         if (_busy)
             return;
-        _busy = true; ConnectButton.IsEnabled = false;
+        _busy = true;
+        ConnectButton.IsEnabled = false;
         StatusLabel.Text = "Working…";
-        try { await action(); }
+        try
+        {
+            await action();
+        }
         catch (Exception ex)
         {
             StatusLabel.Text = "Error";
             ResultLabel.Text = ex.ToString();
         }
-        finally { _busy = false; ConnectButton.IsEnabled = true; }
+        finally
+        {
+            _busy = false;
+            ConnectButton.IsEnabled = true;
+        }
     }
 
     private async Task DisconnectAsync()

@@ -33,7 +33,11 @@ public sealed class TcpJsonConnection : IProtocolMessageConnection
             await client.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
             return new TcpJsonConnection(client, maxMessageBytes);
         }
-        catch { client.Dispose(); throw; }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
     }
 
     public static TcpJsonConnection FromAcceptedClient(TcpClient client, int maxMessageBytes = ProtocolConstants.InitialMaxMessageBytes)
@@ -65,7 +69,10 @@ public sealed class TcpJsonConnection : IProtocolMessageConnection
             await _stream.WriteAsync(new byte[] { ProtocolConstants.FrameDelimiter }, cancellationToken).ConfigureAwait(false);
             await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
-        finally { _writeLock.Release(); }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     public async Task<T?> ReceiveAsync<T>(CancellationToken cancellationToken = default)
@@ -142,5 +149,9 @@ public sealed class TcpJsonServer : IProtocolMessageListener
     public async Task<IProtocolMessageConnection> AcceptAsync(CancellationToken cancellationToken = default) =>
         TcpJsonConnection.FromAcceptedClient(await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false),
             Math.Min(_maxMessageBytes, ProtocolConstants.InitialMaxMessageBytes));
-    public ValueTask DisposeAsync() { _listener.Stop(); return ValueTask.CompletedTask; }
+    public ValueTask DisposeAsync()
+    {
+        _listener.Stop();
+        return ValueTask.CompletedTask;
+    }
 }
