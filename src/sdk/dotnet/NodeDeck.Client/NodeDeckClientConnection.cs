@@ -75,7 +75,7 @@ public sealed class NodeDeckClientConnection : IAsyncDisposable
             ProtocolValidator.ValidateRequest(request, helloCompleted: type != RequestType.ProtocolHello, maxMessageBytes: _connection.MaxMessageBytes);
             await _connection.SendAsync(request, cancellationToken).ConfigureAwait(false);
             var response = await _connection.ReceiveAsync<ProtocolResponse>(cancellationToken).ConfigureAwait(false)
-                ?? throw new IOException("Gateway closed the TCP connection.");
+                ?? throw new IOException("Gateway closed the connection.");
             if (response.RequestId != request.RequestId || response.Type != request.Type)
                 throw new InvalidResponseException("Gateway response correlation does not match the request.");
             if (response.Error is { } error)
@@ -94,7 +94,8 @@ public sealed class NodeDeckClientConnection : IAsyncDisposable
         {
             try
             {
-                await SendRequestAsync(RequestType.AuthLogout, new { }, true, CancellationToken.None).ConfigureAwait(false);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await SendRequestAsync(RequestType.AuthLogout, new { }, true, timeout.Token).ConfigureAwait(false);
             }
             catch { }
         }

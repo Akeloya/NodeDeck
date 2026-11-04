@@ -16,11 +16,21 @@ For Bluetooth LE on Windows, run:
 dotnet run --project src/examples/dotnet-console/NodeDeck.Console -- --transport bluetooth --secret nodedeck-dev
 ```
 
-In the phone app select **Bluetooth LE**, grant Nearby devices permission, and tap **Connect**. The phone advertises the NodeDeck GATT service; the Console app scans and connects as a BLE central. The computer and phone do not need to be on the same Wi-Fi network. The initial profile supports one phone connection at a time. The Visual Studio launch profiles `NodeDeck.Console - TCP` and `NodeDeck.Console - Bluetooth LE` select those transports under the debugger. Starting without debugging opens a console menu.
+On the Android connection screen select the Bluetooth development profile, tap **Подключиться**, and grant Nearby devices permission. The phone advertises the NodeDeck GATT service; the Console app scans and connects as a BLE central. The computer and phone do not need to be on the same Wi-Fi network. The initial profile supports one phone connection at a time. The Visual Studio launch profiles `NodeDeck.Console - TCP` and `NodeDeck.Console - Bluetooth LE` select those transports under the debugger. Starting without debugging opens a console menu.
 
 The development BLE GATT service UUID is `a1b2c3d4-e5f6-4a1b-8c9d-001122334455`; each protocol envelope is UTF-8 JSON terminated by `\n`, fragmented into 20-byte GATT writes/notifications and reassembled at the other end.
 
 ### Listener profiles
+
+The three JSON launch profiles load the example files from the console project's `Settings` directory. Run one from the repository root with:
+
+```powershell
+dotnet run --project src/examples/dotnet-console/NodeDeck.Console --launch-profile "NodeDeck.Console - TCP (JSON)"
+dotnet run --project src/examples/dotnet-console/NodeDeck.Console --launch-profile "NodeDeck.Console - Bluetooth LE (JSON)"
+dotnet run --project src/examples/dotnet-console/NodeDeck.Console --launch-profile "NodeDeck.Console - TCP + Bluetooth LE (JSON)"
+```
+
+The combined profile passes both files to `--settings`. The gateway accepts TCP connections while the BLE scanner looks for a phone. Relative settings paths are resolved from the working directory first and then from the directory containing the executable.
 
 Use `--save-settings` to write the selected listener profile and exit. Then use `--settings` to start the gateway with that JSON file. Keep supplying the shared secret separately with `--secret`.
 
@@ -33,6 +43,6 @@ The `Type` field selects `tcp` or `bluetooth`. Use `--transport bluetooth --save
 
 The initial BLE characteristics use the plain GATT protection level and do not require bonding/encryption. Use only a temporary development secret while testing; this profile is not suitable for production credentials.
 
-In the Android app, enter the gateway address and port. A physical phone and computer must be on the same Wi-Fi network; use the computer's LAN IPv4 address (for example `192.168.1.20`), and allow inbound TCP port `5050` in the computer firewall. For an Android emulator connecting to a gateway on its host computer, use `10.0.2.2`.
+In the Android app, select the Wi-Fi development profile and tap **Настроить** to change its saved host, port, or secret. A physical phone and computer must be on the same Wi-Fi network; use the computer's LAN IPv4 address (for example `192.168.1.20`), and allow inbound TCP port `5050` in the computer firewall. For an Android emulator connecting to a gateway on its host computer, use `10.0.2.2`.
 
 On Windows, the Android emulator build requires an installed Android SDK and MAUI Android workload. The console gateway can be run on Windows, Linux, or macOS with the .NET 10 SDK.

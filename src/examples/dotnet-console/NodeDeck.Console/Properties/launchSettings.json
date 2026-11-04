@@ -7,6 +7,18 @@
     "NodeDeck.Console - Bluetooth LE": {
       "commandName": "Project",
       "commandLineArgs": "--debug-profile bluetooth"
+    },
+    "NodeDeck.Console - TCP (JSON)": {
+      "commandName": "Project",
+      "commandLineArgs": "--settings Settings/tcp.json"
+    },
+    "NodeDeck.Console - Bluetooth LE (JSON)": {
+      "commandName": "Project",
+      "commandLineArgs": "--settings Settings/bluetooth.json"
+    },
+    "NodeDeck.Console - TCP + Bluetooth LE (JSON)": {
+      "commandName": "Project",
+      "commandLineArgs": "--settings Settings/tcp.json Settings/bluetooth.json"
     }
   }
 }

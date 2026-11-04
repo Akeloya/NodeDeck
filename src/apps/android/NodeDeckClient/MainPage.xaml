@@ -1,30 +1,57 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="NodeDeckClient.MainPage"
-             Title="NodeDeck">
-    <ScrollView>
-        <VerticalStackLayout Padding="24" Spacing="14">
-            <Label Text="NodeDeck demo" Style="{StaticResource Headline}" />
-            <Picker x:Name="TransportPicker" Title="Transport" SelectedIndex="0" SelectedIndexChanged="OnTransportChanged">
-                <Picker.Items>
-                    <x:String>TCP</x:String>
-                    <x:String>Bluetooth LE</x:String>
-                </Picker.Items>
-            </Picker>
-            <Label x:Name="TcpHelpLabel" Text="Enter the computer's LAN IP. For an Android emulator use 10.0.2.2 when the gateway runs on the host." />
-            <Entry x:Name="HostEntry" Text="10.0.2.2" Placeholder="Gateway IP address" Keyboard="Url" />
-            <Entry x:Name="PortEntry" Text="5050" Placeholder="Port" Keyboard="Numeric" />
-            <Entry x:Name="SecretEntry" Text="nodedeck-dev" Placeholder="Shared secret" IsPassword="True" />
-            <Button x:Name="ConnectButton" Text="Connect" Clicked="OnConnectClicked" />
-            <Entry x:Name="MessageEntry" Text="Hello from phone" Placeholder="Command message" />
-            <VerticalStackLayout x:Name="CommandButtons" IsEnabled="False" Spacing="14">
-                <Button Text="Say hello" Clicked="OnCommandClicked" CommandParameter="phone.hello" />
-                <Button Text="Get status" Clicked="OnCommandClicked" CommandParameter="phone.status" />
-                <Button Text="Run action" Clicked="OnCommandClicked" CommandParameter="phone.action" />
-            </VerticalStackLayout>
-            <Label x:Name="StatusLabel" Text="Disconnected" />
-            <Label x:Name="ResultLabel" Text="" LineBreakMode="WordWrap" />
-        </VerticalStackLayout>
-    </ScrollView>
+             xmlns:local="clr-namespace:NodeDeckClient"
+             x:Class="NodeDeckClient.MainPage" Title="Подключения">
+    <Grid Padding="20" RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="12">
+        <Button Text="Сканировать QR-код" IsEnabled="False" />
+        <Label Grid.Row="1" Text="Сохранённые подключения" FontSize="22" FontAttributes="Bold" />
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*" ColumnSpacing="4">
+            <Grid.Resources>
+                <Style TargetType="ImageButton">
+                    <Setter Property="WidthRequest" Value="48" />
+                    <Setter Property="HeightRequest" Value="48" />
+                    <Setter Property="Padding" Value="10" />
+                    <Setter Property="VerticalOptions" Value="Center" />
+                    <Setter Property="CornerRadius" Value="12" />
+                    <Setter Property="BackgroundColor" Value="Transparent" />
+                    <Setter Property="BorderColor" Value="{AppThemeBinding Light=#6550A3, Dark=#BBA9F8}" />
+                    <Setter Property="BorderWidth" Value="0" />
+                </Style>
+            </Grid.Resources>
+            <ImageButton x:Name="WifiFilter" Source="wifi.png" SemanticProperties.Description="Фильтр Wi-Fi"
+                         Clicked="OnTransportFilterClicked" />
+            <ImageButton x:Name="BluetoothFilter" Grid.Column="1" Source="bluetooth.png"
+                         SemanticProperties.Description="Фильтр Bluetooth" Clicked="OnTransportFilterClicked" />
+            <SearchBar Grid.Column="2" Placeholder="Найти подключение" TextChanged="OnSearchChanged" />
+        </Grid>
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <Button x:Name="ConnectButton" Text="Подключиться" Clicked="OnConnectClicked" />
+            <Button x:Name="EditButton" Grid.Column="1" Text="Настроить" Clicked="OnEditClicked" />
+        </Grid>
+        <CollectionView x:Name="Connections" Grid.Row="4" SelectionMode="Single"
+                        SelectionChanged="OnSelectionChanged" EmptyView="Подключений не найдено">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="local:ConnectionProfile">
+                    <Grid Padding="12" ColumnDefinitions="32,*" ColumnSpacing="14">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup Name="CommonStates">
+                                <VisualState Name="Normal" />
+                                <VisualState Name="Selected">
+                                    <VisualState.Setters>
+                                        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#EAE4FF, Dark=#3E3257}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Image Source="{Binding Icon}" WidthRequest="28" HeightRequest="28" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="3">
+                            <Label Text="{Binding Name}" FontAttributes="Bold" />
+                            <Label Text="{Binding Detail}" FontSize="13" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
 </ContentPage>

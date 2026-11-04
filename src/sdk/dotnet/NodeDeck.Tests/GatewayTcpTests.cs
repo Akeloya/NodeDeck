@@ -53,6 +53,25 @@ public class GatewayTcpTests
     }
 
     [Test]
+    public async Task Gateway_AcceptsClientsOnBothListeners()
+    {
+        var first = new TcpJsonServer(IPAddress.Loopback, 0);
+        var second = new TcpJsonServer(IPAddress.Loopback, 0);
+        await using var gateway = new GatewayBuilder("test-gateway", "Test Gateway", "test-secret")
+            .BuildWithListeners([first, second]);
+        gateway.Start();
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var firstClient = await NodeDeckClientConnection.ConnectAsync(
+            "127.0.0.1", first.Port, "test-secret", cancellationToken: timeout.Token);
+        await using var secondClient = await NodeDeckClientConnection.ConnectAsync(
+            "127.0.0.1", second.Port, "test-secret", cancellationToken: timeout.Token);
+        var firstCapabilities = await firstClient.GetCapabilitiesAsync(timeout.Token);
+        var secondCapabilities = await secondClient.GetCapabilitiesAsync(timeout.Token);
+        Assert.That(JsonElement.DeepEquals(firstCapabilities, secondCapabilities), Is.True);
+    }
+
+    [Test]
     public async Task Gateway_RejectsInvalidArgumentsWithoutRunningHandler()
     {
         await using var gateway = CreateGateway(out var count);

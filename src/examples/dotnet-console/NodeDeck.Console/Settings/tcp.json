@@ -1,0 +1,5 @@
+{
+  "Type": "tcp",
+  "IPAddress": "0.0.0.0",
+  "Port": 5050
+}

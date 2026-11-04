@@ -25,7 +25,10 @@ public sealed class GatewayBuilder(string gatewayId, string name, string sharedS
         return this;
     }
     public GatewayServer Build(IProtocolMessageListener listener, string? description = null) =>
-        new(gatewayId, name, description, sharedSecret, _commands, listener);
+        BuildWithListeners([listener ?? throw new ArgumentNullException(nameof(listener))], description);
+
+    public GatewayServer BuildWithListeners(IEnumerable<IProtocolMessageListener> listeners, string? description = null) =>
+        new(gatewayId, name, description, sharedSecret, _commands, listeners);
 }
 
 /// <summary>Minimal version 0.1 gateway server. TCP is intended for local development; configure a secure tunnel before using real secrets.</summary>
@@ -34,7 +37,7 @@ public sealed class GatewayServer : IAsyncDisposable
     private readonly string _gatewayId, _name, _sharedSecret;
     private readonly string? _description;
     private readonly Dictionary<string, GatewayCommand> _commands;
-    private readonly IProtocolMessageListener _listener;
+    private readonly IProtocolMessageListener[] _listeners;
     private readonly ConcurrentDictionary<string, Session> _sessions = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, CachedInvocation> _dedup = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _dedupLocks = new(StringComparer.Ordinal);
@@ -49,7 +52,7 @@ public sealed class GatewayServer : IAsyncDisposable
     private Task? _acceptLoop;
 
     internal GatewayServer(string gatewayId, string name, string? description, string sharedSecret,
-        IEnumerable<GatewayCommand> commands, IProtocolMessageListener listener)
+        IEnumerable<GatewayCommand> commands, IEnumerable<IProtocolMessageListener> listeners)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gatewayId);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -64,11 +67,13 @@ public sealed class GatewayServer : IAsyncDisposable
             _commands.Values.Select(x => x.Definition).ToArray(), [], []);
         ProtocolValidator.ValidateCapabilities(_capabilities);
         _ui = new UiDocument(_uiRevision, _capabilitiesRevision, null, []);
-        _listener = listener ?? throw new ArgumentNullException(nameof(listener));
+        _listeners = listeners.ToArray();
+        if (_listeners.Length == 0 || _listeners.Any(listener => listener is null))
+            throw new ArgumentException("Provide at least one listener and no null entries.", nameof(listeners));
     }
 
     public string GatewayId => _gatewayId;
-    public int? TcpPort => (_listener as TcpJsonServer)?.Port;
+    public int? TcpPort => _listeners.OfType<TcpJsonServer>().FirstOrDefault()?.Port;
     public event Action? ClientLoggedOut;
     public event Action<string, string, JsonElement>? CommandReceived;
 
@@ -76,8 +81,9 @@ public sealed class GatewayServer : IAsyncDisposable
     {
         if (_acceptLoop is not null)
             throw new InvalidOperationException("Gateway has already started.");
-        _listener.Start();
-        _acceptLoop = AcceptLoopAsync(_shutdown.Token);
+        foreach (var listener in _listeners)
+            listener.Start();
+        _acceptLoop = Task.WhenAll(_listeners.Select(listener => AcceptLoopAsync(listener, _shutdown.Token)));
     }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -87,13 +93,13 @@ public sealed class GatewayServer : IAsyncDisposable
         await _acceptLoop!.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task AcceptLoopAsync(CancellationToken cancellationToken)
+    private async Task AcceptLoopAsync(IProtocolMessageListener listener, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                var connection = await _listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
+                var connection = await listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
                 var task = HandleConnectionAsync(connection, cancellationToken);
                 lock (_tasksLock)
                     _connections.Add(task);
@@ -116,6 +122,11 @@ public sealed class GatewayServer : IAsyncDisposable
             catch (SocketException) when (cancellationToken.IsCancellationRequested)
             {
                 break;
+            }
+            catch
+            {
+                _shutdown.Cancel();
+                throw;
             }
         }
     }
@@ -323,7 +334,7 @@ public sealed class GatewayServer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _shutdown.Cancel();
-        await _listener.DisposeAsync().ConfigureAwait(false);
+        await Task.WhenAll(_listeners.Select(listener => listener.DisposeAsync().AsTask())).ConfigureAwait(false);
         if (_acceptLoop is not null)
             try
             {

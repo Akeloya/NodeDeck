@@ -23,6 +23,7 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
     private WindowsBleProtocolConnection? _connection;
     private int _connecting;
     private bool _started;
+    private volatile bool _stopped;
 
     private readonly BluetoothListenerSettings _settings;
     private readonly ListenerLog _log;
@@ -74,6 +75,8 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
 
     private void OnAdvertisementReceived(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs args)
     {
+        if (_stopped || Volatile.Read(ref _connecting) != 0)
+            return;
         if (_log.IsEnabled(LogLevel.Trace) || Diagnostic is not null)
         {
             var advertised = string.Join(",", args.Advertisement.ServiceUuids);
@@ -106,7 +109,7 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
 
             var tx = txResult.Characteristics[0];
             var rx = rxResult.Characteristics[0];
-            var connection = new WindowsBleProtocolConnection(device, rx, tx, _settings);
+            var connection = new WindowsBleProtocolConnection(device, service, rx, tx, _settings, OnConnectionClosed);
             tx.ValueChanged += connection.OnValueChanged;
             try
             {
@@ -122,8 +125,12 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
             }
             connection.MonitorDisconnection(message => Report(LogLevel.Warn, message));
             _connection = connection;
-            _watcher?.Stop();
-            _connections.Writer.TryWrite(_connection);
+            // Keep watching so a phone can advertise again after a disconnect.
+            if (!_connections.Writer.TryWrite(connection))
+            {
+                await connection.DisposeAsync();
+                return;
+            }
             _ready.TrySetResult();
             Report(LogLevel.Info, "BLE GATT connection is ready.");
         }
@@ -135,6 +142,12 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
         }
     }
 
+    private void OnConnectionClosed(WindowsBleProtocolConnection connection)
+    {
+        if (Interlocked.CompareExchange(ref _connection, null, connection) == connection)
+            Interlocked.Exchange(ref _connecting, 0);
+    }
+
     public async Task<IProtocolMessageConnection> AcceptAsync(CancellationToken cancellationToken = default)
     {
         if (!_started)
@@ -144,15 +157,18 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
 
     public async ValueTask DisposeAsync()
     {
-        _watcher?.Stop();
-        if (_connection is not null)
-            await _connection.DisposeAsync();
+        _stopped = true;
         _connections.Writer.TryComplete();
+        _watcher?.Stop();
+        if (_connection is { } connection)
+            await connection.DisposeAsync();
     }
 
     private sealed class WindowsBleProtocolConnection : IProtocolMessageConnection
     {
         private readonly BluetoothLEDevice _device;
+        private readonly GattDeviceService _service;
+        private readonly Action<WindowsBleProtocolConnection> _closed;
         private readonly GattCharacteristic _rx;
         private readonly GattCharacteristic _tx;
         private readonly Channel<byte[]> _incoming = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
@@ -162,9 +178,12 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
         private int _maxMessageBytes;
         private readonly int _chunkSize;
 
-        public WindowsBleProtocolConnection(BluetoothLEDevice device, GattCharacteristic rx, GattCharacteristic tx, BluetoothListenerSettings settings)
+        public WindowsBleProtocolConnection(BluetoothLEDevice device, GattDeviceService service, GattCharacteristic rx,
+            GattCharacteristic tx, BluetoothListenerSettings settings, Action<WindowsBleProtocolConnection> closed)
         {
             _device = device;
+            _service = service;
+            _closed = closed;
             _rx = rx;
             _tx = tx;
             _chunkSize = settings.ChunkSize;
@@ -273,7 +292,9 @@ public sealed class WindowsBleProtocolListener : IProtocolMessageListener
             _tx.ValueChanged -= OnValueChanged;
             _frame.Dispose();
             _writeLock.Dispose();
+            _service.Dispose();
             _device.Dispose();
+            _closed(this);
             return ValueTask.CompletedTask;
         }
     }

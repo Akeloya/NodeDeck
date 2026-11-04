@@ -9,6 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CommandLineParser" />
+    <PackageReference Include="InputSimulatorCore" />
+    <None Update="Settings\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\sdk\dotnet\NodeDeck.Gateway\NodeDeck.Gateway.csproj" />
     <ProjectReference Include="..\..\..\sdk\dotnet\NodeDeck.Transport.Ble.Windows\NodeDeck.Transport.Ble.Windows.csproj" />
   </ItemGroup>

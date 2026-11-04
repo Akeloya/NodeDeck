@@ -1,90 +1,65 @@
 using System.Diagnostics;
 using System.Text.Json;
-using NodeDeck.Gateway;
-using NodeDeck.Core.Protocol;
+using CommandLine;
 using NodeDeck.Core.Settings;
 using NodeDeck.Core.Transport;
+using NodeDeck.Gateway;
 using NodeDeck.Transport.Ble.Windows;
 using NodeDeck.Transport.Tcp;
-using ProtocolValueType = NodeDeck.Core.Protocol.ValueType;
 
 namespace NodeDeck.Console
 {
     internal static class Program
     {
-        private static async Task<int> Main(string[] args)
+        private static Task<int> Main(string[] args) =>
+            Parser.Default.ParseArguments<ConsoleOptions>(args).MapResult(
+                RunAsync,
+                errors => Task.FromResult(errors.All(error => error is HelpRequestedError or VersionRequestedError) ? 0 : 2));
+
+        private static async Task<int> RunAsync(ConsoleOptions options)
         {
             var factory = new ProtocolMessageListenerFactory()
                 .Register<TcpListenerSettings>(settings => new TcpJsonServer(settings))
                 .Register<BluetoothListenerSettings>(settings => new WindowsBleProtocolListener(settings));
 
-            string secret;
-            IProtocolMessageListener listener;
+            var listeners = new List<IProtocolMessageListener>();
+            GatewayServer? gateway = null;
             try
             {
-                secret = ReadOption(args, "--secret") ?? "nodedeck-dev";
-                var output = ReadOption(args, "--save-settings");
-                var settings = ReadOption(args, "--settings") is { } path
-                    ? factory.LoadSettings(path)
-                    : ReadListenerSettings(args);
-                listener = factory.Create(settings);
-                if (output is not null)
+                IListenerSettings[] settings = options.Settings.Any()
+                    ? options.Settings.Select(path => factory.LoadSettings(ResolveSettingsPath(path))).ToArray()
+                    : [ReadListenerSettings(options)];
+                if (options.SaveSettings is not null && settings.Length != 1)
+                    throw new ArgumentException("--save-settings requires a single listener configuration.");
+
+                foreach (var configuration in settings)
+                    listeners.Add(factory.Create(configuration));
+
+                if (options.SaveSettings is not null)
                 {
-                    await using (listener)
-                        factory.SaveSettings(output, settings);
+                    factory.SaveSettings(options.SaveSettings, settings[0]);
                     return 0;
                 }
+
+                var builder = new GatewayBuilder("console-demo", "NodeDeck Console Demo", options.Secret);
+                DemoCommands.Register(builder);
+                gateway = builder.BuildWithListeners(listeners);
             }
             catch (Exception ex) when (ex is JsonException or IOException or ArgumentException or UnauthorizedAccessException)
             {
                 System.Console.Error.WriteLine(ex.Message);
                 return 2;
             }
-
-            if (secret == "nodedeck-dev")
-                System.Console.WriteLine("Using development secret 'nodedeck-dev'. Set --secret to change it.");
-
-            var parameters = new ValueDescriptor
+            finally
             {
-                Type = ProtocolValueType.Object,
-                Properties = new Dictionary<string, ValueDescriptor>
-                {
-                    ["message"] = new() { Type = ProtocolValueType.String, MinLength = 1, MaxLength = 200 }
-                },
-                Required = ["message"],
-                AdditionalProperties = false
-            };
-            var resultDescriptor = new ValueDescriptor
-            {
-                Type = ProtocolValueType.Object,
-                Properties = new Dictionary<string, ValueDescriptor>
-                {
-                    ["reply"] = new() { Type = ProtocolValueType.String }
-                },
-                Required = ["reply"],
-                AdditionalProperties = false
-            };
-
-            var builder = new GatewayBuilder("console-demo", "NodeDeck Console Demo", secret);
-            foreach (var (commandId, title) in new[]
-            {
-                ("phone.hello", "Say hello"),
-                ("phone.status", "Get status"),
-                ("phone.action", "Run action")
-            })
-            {
-                var id = commandId;
-                builder.AddCommand(
-                    new CommandDefinition(id, title, "Demo command invoked from the phone", parameters, resultDescriptor, new CommandAvailability(true)),
-                    (arguments, _) =>
-                    {
-                        var message = arguments.GetProperty("message").GetString()!;
-                        System.Console.WriteLine($"[{DateTimeOffset.Now:HH:mm:ss}] Phone command: {id}; message: {message}");
-                        return ValueTask.FromResult(JsonSerializer.SerializeToElement(new { reply = $"Console received '{message}' via {id}." }));
-                    });
+                if (gateway is null)
+                    foreach (var listener in listeners)
+                        await listener.DisposeAsync();
             }
 
-            var gateway = builder.Build(listener);
+            if (options.Secret == "nodedeck-dev")
+                System.Console.WriteLine("Using development secret 'nodedeck-dev'. Set --secret to change it.");
+
             await using (gateway.ConfigureAwait(false))
             {
                 gateway.ClientLoggedOut += () => System.Console.WriteLine("Client logged out. Session ended.");
@@ -98,7 +73,7 @@ namespace NodeDeck.Console
                 try
                 {
                     gateway.Start();
-                    await listener.Ready.WaitAsync(shutdown.Token);
+                    await Task.WhenAll(listeners.Select(listener => listener.Ready)).WaitAsync(shutdown.Token);
                 }
                 catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
                 {
@@ -121,34 +96,28 @@ namespace NodeDeck.Console
             return 0;
         }
 
-        private static IListenerSettings ReadListenerSettings(string[] args)
+        private static string ResolveSettingsPath(string path)
         {
-            var debugProfile = Debugger.IsAttached ? ReadOption(args, "--debug-profile") : null;
-            var transport = ReadOption(args, "--transport") ??
+            if (Path.IsPathRooted(path) || File.Exists(path))
+                return path;
+
+            var bundledPath = Path.Combine(AppContext.BaseDirectory, path);
+            return File.Exists(bundledPath) ? bundledPath : path;
+        }
+
+        private static IListenerSettings ReadListenerSettings(ConsoleOptions options)
+        {
+            var debugProfile = Debugger.IsAttached ? options.DebugProfile : null;
+            var transport = options.Transport ??
                 (debugProfile is "tcp" or "bluetooth" ? debugProfile : SelectTransport());
             if (transport == "bluetooth")
                 return new BluetoothListenerSettings();
             if (transport != "tcp")
                 throw new ArgumentException("Transport must be 'tcp' or 'bluetooth'.");
             var settings = new TcpListenerSettings();
-            settings.IPAddress = ReadOption(args, "--bind") ?? settings.IPAddress;
-            if (ReadOption(args, "--port") is { } portText)
-            {
-                if (!int.TryParse(portText, out var port))
-                    throw new ArgumentException($"Invalid port '{portText}'.");
-                settings.Port = port;
-            }
+            settings.IPAddress = options.Bind ?? settings.IPAddress;
+            settings.Port = options.Port ?? settings.Port;
             return settings;
-        }
-
-        private static string? ReadOption(string[] arguments, string key)
-        {
-            var index = Array.IndexOf(arguments, key);
-            if (index < 0)
-                return null;
-            if (index + 1 == arguments.Length || arguments[index + 1].StartsWith("--", StringComparison.Ordinal))
-                throw new ArgumentException($"Missing value for {key}.");
-            return arguments[index + 1];
         }
 
         private static string SelectTransport()

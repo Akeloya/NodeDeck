@@ -25,6 +25,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
     private readonly MemoryStream _frame = new();
     private readonly SemaphoreSlim _notifyLock = new(1, 1);
     private readonly object _frameLock = new();
+    private bool _closed;
     private int _maxMessageBytes = ProtocolConstants.InitialMaxMessageBytes;
 
     private AndroidBleProtocolConnection(BluetoothGattServer server, GattServerCallback callback,
@@ -35,6 +36,8 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         _advertiser = advertiser;
         _advertiseCallback = advertiseCallback;
     }
+
+    public Task Disconnected => _callback.Disconnected.Task;
 
     public int MaxMessageBytes => _maxMessageBytes;
     public void SetMaxMessageBytes(int maxMessageBytes)
@@ -59,46 +62,43 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         var server = manager.OpenGattServer(activity, callback)
             ?? throw new IOException("Android could not open a BLE GATT server.");
         var connection = new AndroidBleProtocolConnection(server, callback, advertiser, new ServiceAdvertiseCallback());
-        callback.Connection = connection;
-        var service = new BluetoothGattService(UUID.FromString(BleProtocolConstants.ServiceUuid), GattServiceType.Primary);
-        Diagnostic?.Invoke("Opening GATT server and registering NodeDeck service…");
-
-        var tx = new BluetoothGattCharacteristic(UUID.FromString(BleProtocolConstants.ClientToGatewayCharacteristicUuid),
-            GattProperty.Notify, GattPermission.Read);
-        tx.AddDescriptor(new BluetoothGattDescriptor(UUID.FromString(BleProtocolConstants.ClientConfigurationDescriptorUuid),
-            GattDescriptorPermission.Read | GattDescriptorPermission.Write));
-        var rx = new BluetoothGattCharacteristic(UUID.FromString(BleProtocolConstants.GatewayToClientCharacteristicUuid),
-            GattProperty.Write, GattPermission.Write);
-        service.AddCharacteristic(tx);
-        service.AddCharacteristic(rx);
-
-        callback.SetCharacteristics(tx, rx);
-        if (!server.AddService(service))
-        {
-            server.Close();
-            throw new IOException("Android rejected the NodeDeck GATT service.");
-        }
-        await callback.ServiceAdded.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
-        Diagnostic?.Invoke("NodeDeck GATT service registered; starting BLE advertising…");
-
-        var data = new AdvertiseData.Builder()!
-            // A 128-bit service UUID already consumes 18 of the legacy 31-byte
-            // advertisement payload bytes. Do not include the device name here:
-            // Android rejects the packet with ADVERTISE_FAILED_DATA_TOO_LARGE.
-            .SetIncludeDeviceName(false)!
-            .AddServiceUuid(new ParcelUuid(UUID.FromString(BleProtocolConstants.ServiceUuid)))!
-            .Build()!;
-        var settings = new AdvertiseSettings.Builder()!
-            .SetAdvertiseMode(AdvertiseMode.LowLatency)!
-            .SetConnectable(true)!
-            .SetTimeout(0)!
-            .SetTxPowerLevel(AdvertiseTx.PowerMedium)!
-            .Build()!;
-        advertiser.StartAdvertising(settings, data, connection._advertiseCallback);
-        await ((ServiceAdvertiseCallback)connection._advertiseCallback).Started.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
-        Diagnostic?.Invoke("BLE advertising started; waiting for computer to connect…");
         try
         {
+            callback.Connection = connection;
+            var service = new BluetoothGattService(UUID.FromString(BleProtocolConstants.ServiceUuid), GattServiceType.Primary);
+            Diagnostic?.Invoke("Opening GATT server and registering NodeDeck service…");
+
+            var tx = new BluetoothGattCharacteristic(UUID.FromString(BleProtocolConstants.ClientToGatewayCharacteristicUuid),
+                GattProperty.Notify, GattPermission.Read);
+            tx.AddDescriptor(new BluetoothGattDescriptor(UUID.FromString(BleProtocolConstants.ClientConfigurationDescriptorUuid),
+                GattDescriptorPermission.Read | GattDescriptorPermission.Write));
+            var rx = new BluetoothGattCharacteristic(UUID.FromString(BleProtocolConstants.GatewayToClientCharacteristicUuid),
+                GattProperty.Write, GattPermission.Write);
+            service.AddCharacteristic(tx);
+            service.AddCharacteristic(rx);
+
+            callback.SetCharacteristics(tx, rx);
+            if (!server.AddService(service))
+                throw new IOException("Android rejected the NodeDeck GATT service.");
+            await callback.ServiceAdded.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            Diagnostic?.Invoke("NodeDeck GATT service registered; starting BLE advertising…");
+
+            var data = new AdvertiseData.Builder()!
+                // A 128-bit service UUID already consumes 18 of the legacy 31-byte
+                // advertisement payload bytes. Do not include the device name here:
+                // Android rejects the packet with ADVERTISE_FAILED_DATA_TOO_LARGE.
+                .SetIncludeDeviceName(false)!
+                .AddServiceUuid(new ParcelUuid(UUID.FromString(BleProtocolConstants.ServiceUuid)))!
+                .Build()!;
+            var settings = new AdvertiseSettings.Builder()!
+                .SetAdvertiseMode(AdvertiseMode.LowLatency)!
+                .SetConnectable(true)!
+                .SetTimeout(0)!
+                .SetTxPowerLevel(AdvertiseTx.PowerMedium)!
+                .Build()!;
+            advertiser.StartAdvertising(settings, data, connection._advertiseCallback);
+            await ((ServiceAdvertiseCallback)connection._advertiseCallback).Started.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            Diagnostic?.Invoke("BLE advertising started; waiting for computer to connect…");
             await callback.Connected.Task.WaitAsync(TimeSpan.FromSeconds(WaitForGatewaySeconds), cancellationToken);
             Diagnostic?.Invoke("BLE notifications enabled. Connecting to gateway…");
             return connection;
@@ -106,7 +106,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         catch (TimeoutException ex)
         {
             await connection.DisposeAsync();
-            throw new TimeoutException("No computer connected to the phone's BLE GATT service within 120 seconds. Check that Console reports the NodeDeck service UUID while scanning.", ex);
+            throw new TimeoutException("Timed out while setting up the NodeDeck BLE connection.", ex);
         }
         catch (Exception ex)
         {
@@ -175,6 +175,8 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
     {
         lock (_frameLock)
         {
+            if (_closed)
+                return;
             foreach (var value in bytes)
             {
                 if (value == ProtocolConstants.FrameDelimiter)
@@ -207,10 +209,17 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
 
     public ValueTask DisposeAsync()
     {
+        lock (_frameLock)
+        {
+            if (_closed)
+                return ValueTask.CompletedTask;
+            _closed = true;
+            _frame.Dispose();
+        }
+        _callback.Connection = null;
         _incoming.Writer.TryComplete();
         _advertiser.StopAdvertising(_advertiseCallback);
         _server.Close();
-        _frame.Dispose();
         _notifyLock.Dispose();
         return ValueTask.CompletedTask;
     }
@@ -227,6 +236,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         private TaskCompletionSource<bool>? _notificationSent;
         public AndroidBleProtocolConnection? Connection { get; set; }
         public TaskCompletionSource<bool> ServiceAdded { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Disconnected { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> Connected { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public BluetoothDevice? Central { get; private set; }
         public BluetoothGattCharacteristic? Tx { get; private set; }
@@ -253,20 +263,20 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         public override void OnConnectionStateChange(BluetoothDevice? device, ProfileState status, ProfileState newState)
         {
             Diagnostic?.Invoke($"GATT connection callback: status={status}, state={newState}, device={device?.Address ?? "unknown"}.");
-            if ((int)status != 0)
+            if ((int)status != 0 || newState == ProfileState.Disconnected)
             {
-                Connected.TrySetException(new IOException($"Windows BLE connection failed: {status}."));
+                Central = null;
+                var error = new IOException($"Windows BLE gateway disconnected ({status}).");
+                Disconnected.TrySetResult();
+                Connected.TrySetException(error);
+                _notificationSent?.TrySetException(error);
+                Connection?._incoming.Writer.TryComplete(error);
                 return;
             }
             if (newState == ProfileState.Connected && device is not null)
             {
                 Central = device;
                 Diagnostic?.Invoke("Computer connected over GATT. Waiting for notification subscription…");
-            }
-            if (newState == ProfileState.Disconnected)
-            {
-                Central = null;
-                Connected.TrySetException(new IOException("Windows gateway disconnected."));
             }
         }
 
@@ -322,6 +332,11 @@ internal static class AndroidBlePermissions
         var permissions = new[] { "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_ADVERTISE" };
         if (permissions.All(x => activity.CheckSelfPermission(x) == Permission.Granted))
             return;
+        if (_pending is not null)
+        {
+            await _pending.Task.WaitAsync(TimeSpan.FromMinutes(1), cancellationToken);
+            return;
+        }
         _pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         activity.RequestPermissions(permissions, RequestCode);
         await _pending.Task.WaitAsync(TimeSpan.FromMinutes(1), cancellationToken);
