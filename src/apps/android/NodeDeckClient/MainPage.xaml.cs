@@ -35,7 +35,7 @@ public partial class MainPage : ContentPage
         var selected = (Connections.SelectedItem as ConnectionProfile)?.Id;
         var matches = _profiles
             .Where(p => _transportFilter is null || _transportFilter == (p.IsTcp ? WifiFilter : BluetoothFilter))
-            .Where(p => p.Name.Contains(_query, StringComparison.OrdinalIgnoreCase)
+            .Where(p => p.DisplayName.Contains(_query, StringComparison.OrdinalIgnoreCase)
                 || p.Detail.Contains(_query, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         Connections.ItemsSource = matches;

@@ -22,6 +22,15 @@ Gateways can connect to other gateways, allowing distributed systems built with 
 See [src/protocol/README.md](src/protocol/README.md) for the draft gateway protocol,
 authentication, capabilities, UI schemas, and command execution examples.
 
+## Client localization
+
+The MAUI client uses English as its neutral language and includes Russian translations.
+The system UI language selects the translation; other languages fall back to English.
+UI strings live in `src/apps/android/NodeDeckClient/Resources/Strings/AppResources.resx`
+and `AppResources.ru.resx`, with matching properties in `AppResources.cs`.
+Built-in connection names are localized when displayed, including previously saved
+Russian names. Custom connection names retain their original text.
+
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for the development plan,

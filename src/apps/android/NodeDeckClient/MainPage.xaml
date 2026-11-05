@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:strings="clr-namespace:NodeDeckClient.Resources.Strings"
              xmlns:local="clr-namespace:NodeDeckClient"
-             x:Class="NodeDeckClient.MainPage" Title="Подключения">
+             x:Class="NodeDeckClient.MainPage" Title="{x:Static strings:AppResources.Connections}">
     <Grid Padding="20" RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="12">
-        <Button Text="Сканировать QR-код" IsEnabled="False" />
-        <Label Grid.Row="1" Text="Сохранённые подключения" FontSize="22" FontAttributes="Bold" />
+        <Button Text="{x:Static strings:AppResources.ScanQrCode}" IsEnabled="False" />
+        <Label Grid.Row="1" Text="{x:Static strings:AppResources.SavedConnections}" FontSize="22" FontAttributes="Bold" />
         <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*" ColumnSpacing="4">
             <Grid.Resources>
                 <Style TargetType="ImageButton">
@@ -19,18 +20,18 @@
                     <Setter Property="BorderWidth" Value="0" />
                 </Style>
             </Grid.Resources>
-            <ImageButton x:Name="WifiFilter" Source="wifi.png" SemanticProperties.Description="Фильтр Wi-Fi"
+            <ImageButton x:Name="WifiFilter" Source="wifi.png" SemanticProperties.Description="{x:Static strings:AppResources.WifiFilter}"
                          Clicked="OnTransportFilterClicked" />
             <ImageButton x:Name="BluetoothFilter" Grid.Column="1" Source="bluetooth.png"
-                         SemanticProperties.Description="Фильтр Bluetooth" Clicked="OnTransportFilterClicked" />
-            <SearchBar Grid.Column="2" Placeholder="Найти подключение" TextChanged="OnSearchChanged" />
+                         SemanticProperties.Description="{x:Static strings:AppResources.BluetoothFilter}" Clicked="OnTransportFilterClicked" />
+            <SearchBar Grid.Column="2" Placeholder="{x:Static strings:AppResources.FindConnection}" TextChanged="OnSearchChanged" />
         </Grid>
         <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-            <Button x:Name="ConnectButton" Text="Подключиться" Clicked="OnConnectClicked" />
-            <Button x:Name="EditButton" Grid.Column="1" Text="Настроить" Clicked="OnEditClicked" />
+            <Button x:Name="ConnectButton" Text="{x:Static strings:AppResources.Connect}" Clicked="OnConnectClicked" />
+            <Button x:Name="EditButton" Grid.Column="1" Text="{x:Static strings:AppResources.Configure}" Clicked="OnEditClicked" />
         </Grid>
         <CollectionView x:Name="Connections" Grid.Row="4" SelectionMode="Single"
-                        SelectionChanged="OnSelectionChanged" EmptyView="Подключений не найдено">
+                        SelectionChanged="OnSelectionChanged" EmptyView="{x:Static strings:AppResources.NoConnectionsFound}">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="local:ConnectionProfile">
                     <Grid Padding="12" ColumnDefinitions="32,*" ColumnSpacing="14">
@@ -46,7 +47,7 @@
                         </VisualStateManager.VisualStateGroups>
                         <Image Source="{Binding Icon}" WidthRequest="28" HeightRequest="28" />
                         <VerticalStackLayout Grid.Column="1" Spacing="3">
-                            <Label Text="{Binding Name}" FontAttributes="Bold" />
+                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" />
                             <Label Text="{Binding Detail}" FontSize="13" />
                         </VerticalStackLayout>
                     </Grid>

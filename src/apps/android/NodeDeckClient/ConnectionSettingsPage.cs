@@ -1,29 +1,31 @@
+using NodeDeckClient.Resources.Strings;
+
 namespace NodeDeckClient;
 
 internal sealed class ConnectionSettingsPage : ContentPage
 {
     private readonly ConnectionProfile _profile;
-    private readonly Entry _host = new() { Placeholder = "Адрес шлюза", Keyboard = Keyboard.Url };
-    private readonly Entry _port = new() { Placeholder = "Порт TCP", Keyboard = Keyboard.Numeric };
-    private readonly Entry _secret = new() { Placeholder = "Оставьте пустым, чтобы сохранить текущий", IsPassword = true };
+    private readonly Entry _host = new() { Placeholder = AppResources.GatewayAddress, Keyboard = Keyboard.Url };
+    private readonly Entry _port = new() { Placeholder = AppResources.TcpPort, Keyboard = Keyboard.Numeric };
+    private readonly Entry _secret = new() { Placeholder = AppResources.KeepCurrentSecret, IsPassword = true };
 
     public ConnectionSettingsPage(ConnectionProfile profile)
     {
         _profile = profile;
-        Title = profile.Name;
+        Title = profile.DisplayName;
         var form = new VerticalStackLayout { Padding = 20, Spacing = 12 };
         if (profile.IsTcp)
         {
             _host.Text = profile.Host;
             _port.Text = profile.Port.ToString();
-            form.Add(new Label { Text = "Адрес шлюза" });
+            form.Add(new Label { Text = AppResources.GatewayAddress });
             form.Add(_host);
-            form.Add(new Label { Text = "Порт TCP" });
+            form.Add(new Label { Text = AppResources.TcpPort });
             form.Add(_port);
         }
-        form.Add(new Label { Text = "Новый секрет шлюза" });
+        form.Add(new Label { Text = AppResources.NewGatewaySecret });
         form.Add(_secret);
-        var save = new Button { Text = "Сохранить" };
+        var save = new Button { Text = AppResources.Save };
         save.Clicked += OnSaveClicked;
         form.Add(save);
         Content = new ScrollView { Content = form };
@@ -36,7 +38,7 @@ internal sealed class ConnectionSettingsPage : ContentPage
         {
             if (string.IsNullOrWhiteSpace(_host.Text) || !int.TryParse(_port.Text, out var port) || port is < 1 or > 65535)
             {
-                await DisplayAlertAsync("Параметры TCP", "Укажите адрес и порт от 1 до 65535.", "OK");
+                await DisplayAlertAsync(AppResources.TcpSettings, AppResources.InvalidTcpSettings, AppResources.Ok);
                 return;
             }
             updated = _profile with { Host = _host.Text.Trim(), Port = port };
@@ -51,7 +53,7 @@ internal sealed class ConnectionSettingsPage : ContentPage
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Не удалось сохранить настройки", ex.Message, "OK");
+            await DisplayAlertAsync(AppResources.SaveSettingsFailed, ex.Message, AppResources.Ok);
         }
         finally
         {

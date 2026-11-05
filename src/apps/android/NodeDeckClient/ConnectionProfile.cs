@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NodeDeckClient.Resources.Strings;
 
 namespace NodeDeckClient;
 
@@ -12,6 +14,31 @@ public sealed record ConnectionProfile(string Id, string Name, string? Host, int
     [JsonIgnore] public string Detail => IsTcp ? $"{Host}:{Port}" : "Bluetooth LE";
     [JsonIgnore] public string SecretKey => $"connection.{Id}.secret";
 
+    // Resolve built-in names at display time, including names saved by older versions.
+    // Custom names are user data and must not change with the system language.
+    [JsonIgnore]
+    public string DisplayName
+    {
+        get
+        {
+            var resourceKey = Id switch
+            {
+                "tcp" => nameof(AppResources.WifiDevelopmentProfile),
+                "ble" => nameof(AppResources.BluetoothDevelopmentProfile),
+                _ => null
+            };
+            if (resourceKey is null)
+                return Name;
+
+            var resources = AppResources.ResourceManager;
+            var neutralName = resources.GetString(resourceKey, CultureInfo.InvariantCulture);
+            var russianName = resources.GetString(resourceKey, CultureInfo.GetCultureInfo("ru"));
+            return Name == neutralName || Name == russianName
+                ? resources.GetString(resourceKey, CultureInfo.CurrentUICulture)!
+                : Name;
+        }
+    }
+
     public static ConnectionProfile[] Load()
     {
         if (Preferences.Default.Get<string?>(ProfilesKey, null) is { } json)
@@ -19,8 +46,8 @@ public sealed record ConnectionProfile(string Id, string Name, string? Host, int
 
         ConnectionProfile[] profiles =
         [
-            new("tcp", "Wi-Fi · разработка", "10.0.2.2"),
-            new("ble", "Bluetooth · разработка", null)
+            new("tcp", AppResources.ResourceManager.GetString(nameof(AppResources.WifiDevelopmentProfile), CultureInfo.InvariantCulture)!, "10.0.2.2"),
+            new("ble", AppResources.ResourceManager.GetString(nameof(AppResources.BluetoothDevelopmentProfile), CultureInfo.InvariantCulture)!, null)
         ];
         Save(profiles);
         return profiles;

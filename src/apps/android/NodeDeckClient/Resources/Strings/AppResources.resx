@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Connections" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="ScanQrCode" xml:space="preserve">
+    <value>Scan QR code</value>
+  </data>
+  <data name="SavedConnections" xml:space="preserve">
+    <value>Saved connections</value>
+  </data>
+  <data name="WifiFilter" xml:space="preserve">
+    <value>Wi-Fi filter</value>
+  </data>
+  <data name="BluetoothFilter" xml:space="preserve">
+    <value>Bluetooth filter</value>
+  </data>
+  <data name="FindConnection" xml:space="preserve">
+    <value>Find a connection</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="Configure" xml:space="preserve">
+    <value>Configure</value>
+  </data>
+  <data name="NoConnectionsFound" xml:space="preserve">
+    <value>No connections found</value>
+  </data>
+  <data name="Connection" xml:space="preserve">
+    <value>Connection</value>
+  </data>
+  <data name="Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="OtherConnections" xml:space="preserve">
+    <value>Other connections</value>
+  </data>
+  <data name="CommandMessage" xml:space="preserve">
+    <value>Message for the command</value>
+  </data>
+  <data name="GatewayAddress" xml:space="preserve">
+    <value>Gateway address</value>
+  </data>
+  <data name="TcpPort" xml:space="preserve">
+    <value>TCP port</value>
+  </data>
+  <data name="KeepCurrentSecret" xml:space="preserve">
+    <value>Leave blank to keep the current secret</value>
+  </data>
+  <data name="NewGatewaySecret" xml:space="preserve">
+    <value>New gateway secret</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="TcpSettings" xml:space="preserve">
+    <value>TCP settings</value>
+  </data>
+  <data name="InvalidTcpSettings" xml:space="preserve">
+    <value>Enter an address and a port from 1 to 65535.</value>
+  </data>
+  <data name="SaveSettingsFailed" xml:space="preserve">
+    <value>Could not save settings</value>
+  </data>
+  <data name="ConnectingToGateway" xml:space="preserve">
+    <value>Connecting to the gateway…</value>
+  </data>
+  <data name="WaitingForBluetoothGateway" xml:space="preserve">
+    <value>Waiting for a gateway over Bluetooth LE…</value>
+  </data>
+  <data name="MissingCommandList" xml:space="preserve">
+    <value>The gateway did not return a command list.</value>
+  </data>
+  <data name="ConnectionRestored" xml:space="preserve">
+    <value>Connection to the gateway restored.</value>
+  </data>
+  <data name="GatewayDisconnected" xml:space="preserve">
+    <value>The gateway disconnected.</value>
+  </data>
+  <data name="GatewayTimeout" xml:space="preserve">
+    <value>Timed out waiting for the gateway.</value>
+  </data>
+  <data name="ReconnectionFailed" xml:space="preserve">
+    <value>Connection lost. Could not reconnect</value>
+  </data>
+  <data name="ConnectionFailed" xml:space="preserve">
+    <value>Could not connect</value>
+  </data>
+  <data name="ConnectionLost" xml:space="preserve">
+    <value>Connection to the gateway lost</value>
+  </data>
+  <data name="ReconnectingToProfile" xml:space="preserve">
+    <value>Reconnecting to “{0}”…</value>
+  </data>
+  <data name="BluetoothAndroidOnly" xml:space="preserve">
+    <value>Bluetooth LE connections are available on Android.</value>
+  </data>
+  <data name="Commands" xml:space="preserve">
+    <value>Commands</value>
+  </data>
+  <data name="NoCommands" xml:space="preserve">
+    <value>The gateway has not published any commands.</value>
+  </data>
+  <data name="JsonArguments" xml:space="preserve">
+    <value>JSON arguments: {0}</value>
+  </data>
+  <data name="Run" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="InvalidJson" xml:space="preserve">
+    <value>Check the JSON syntax.</value>
+  </data>
+  <data name="WifiDevelopmentProfile" xml:space="preserve">
+    <value>Wi-Fi · development</value>
+  </data>
+  <data name="BluetoothDevelopmentProfile" xml:space="preserve">
+    <value>Bluetooth · development</value>
+  </data>
+  <data name="Ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="DefaultMessage" xml:space="preserve">
+    <value>Hello from phone</value>
+  </data>
+  <data name="Home" xml:space="preserve">
+    <value>Home</value>
+  </data>
+</root>
+

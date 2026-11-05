@@ -1,6 +1,7 @@
 using System.Text.Json;
 using NodeDeck.Client;
 using NodeDeck.Core.Protocol;
+using NodeDeckClient.Resources.Strings;
 using ProtocolValueType = NodeDeck.Core.Protocol.ValueType;
 #if ANDROID
 using NodeDeckClient.Platforms.Android;
@@ -75,7 +76,7 @@ public partial class SessionPage : ContentPage
 
     private void ShowConnection(string title, string status, bool connecting)
     {
-        Title = "Подключение";
+        Title = AppResources.Connection;
         CommandsPanel.IsVisible = false;
         ConnectionPanel.IsVisible = true;
         ConnectionTitle.Text = title;
@@ -86,7 +87,7 @@ public partial class SessionPage : ContentPage
     private async Task RunSessionAsync(CancellationToken lifetime)
     {
         var reconnecting = false;
-        ShowConnection(_profile.Name, _profile.IsTcp ? "Подключение к шлюзу…" : "Ожидание шлюза по Bluetooth LE…", true);
+        ShowConnection(_profile.DisplayName, _profile.IsTcp ? AppResources.ConnectingToGateway : AppResources.WaitingForBluetoothGateway, true);
         while (!lifetime.IsCancellationRequested)
         {
             bool wasConnected = false;
@@ -99,12 +100,12 @@ public partial class SessionPage : ContentPage
                 await using var client = connection.Client;
                 var catalog = (await client.GetCapabilitiesAsync(timeout.Token))
                     .Deserialize<CapabilitiesDocument>(ProtocolJson.Options)
-                    ?? throw new InvalidResponseException("Шлюз не вернул список команд.");
+                    ?? throw new InvalidResponseException(AppResources.MissingCommandList);
                 lifetime.ThrowIfCancellationRequested();
                 ProtocolValidator.ValidateCapabilities(catalog);
                 ShowCommands(catalog);
                 if (reconnecting)
-                    ResultLabel.Text = "Связь со шлюзом восстановлена.";
+                    ResultLabel.Text = AppResources.ConnectionRestored;
                 _connected = active;
                 _client = client;
                 wasConnected = true;
@@ -113,7 +114,7 @@ public partial class SessionPage : ContentPage
                     if (connection.Disconnected is { } disconnected)
                     {
                         await disconnected.WaitAsync(active.Token);
-                        throw new IOException("Шлюз отключился.");
+                        throw new IOException(AppResources.GatewayDisconnected);
                     }
                     while (true)
                     {
@@ -141,12 +142,12 @@ public partial class SessionPage : ContentPage
             {
                 if (!wasConnected)
                 {
-                    var reason = ex is OperationCanceledException ? "Истекло время ожидания шлюза." : ex.Message;
-                    ShowConnection(reconnecting ? "Связь потеряна. Не удалось восстановить подключение" : "Не удалось подключиться", $"{_profile.Name} · {reason}", false);
+                    var reason = ex is OperationCanceledException ? AppResources.GatewayTimeout : ex.Message;
+                    ShowConnection(reconnecting ? AppResources.ReconnectionFailed : AppResources.ConnectionFailed, $"{_profile.DisplayName} · {reason}", false);
                     return;
                 }
                 reconnecting = true;
-                ShowConnection("Связь со шлюзом потеряна", $"Повторное подключение к «{_profile.Name}»…", true);
+                ShowConnection(AppResources.ConnectionLost, string.Format(AppResources.ReconnectingToProfile, _profile.DisplayName), true);
             }
         }
     }
@@ -161,17 +162,17 @@ public partial class SessionPage : ContentPage
         var ble = await AndroidBleProtocolConnection.ConnectAsync(token);
         return (await NodeDeckClientConnection.ConnectAsync(ble, secret, "android-phone", "NodeDeck Android", token), ble.Disconnected);
 #else
-        throw new PlatformNotSupportedException("Подключение по Bluetooth LE доступно на Android.");
+        throw new PlatformNotSupportedException(AppResources.BluetoothAndroidOnly);
 #endif
     }
 
     private void ShowCommands(CapabilitiesDocument catalog)
     {
-        Title = "Команды";
+        Title = AppResources.Commands;
         ConnectionPanel.IsVisible = Connecting.IsRunning = false;
         CommandsPanel.IsVisible = true;
         GatewayName.Text = catalog.Gateway.Name;
-        ResultLabel.Text = catalog.Commands.Count == 0 ? "Шлюз не опубликовал команды." : "";
+        ResultLabel.Text = catalog.Commands.Count == 0 ? AppResources.NoCommands : "";
         CommandButtons.Children.Clear();
         MessageEntry.IsVisible = catalog.Commands.Any(UsesMessage);
         foreach (var command in catalog.Commands)
@@ -201,8 +202,8 @@ public partial class SessionPage : ContentPage
             else if (command.Parameters.Properties is { Count: > 0 } || command.Parameters.AdditionalProperties == true)
             {
                 var fields = command.Parameters.Properties?.Select(p => $"{p.Key} ({p.Value.Type})") ?? [];
-                var input = await DisplayPromptAsync(command.Title, "Аргументы JSON: " + string.Join(", ", fields),
-                    "Выполнить", "Отмена", initialValue: "{}");
+                var input = await DisplayPromptAsync(command.Title, string.Format(AppResources.JsonArguments, string.Join(", ", fields)),
+                    AppResources.Run, AppResources.Cancel, initialValue: "{}");
                 if (input is null)
                     return;
                 arguments = JsonSerializer.Deserialize<JsonElement>(input);
@@ -223,7 +224,7 @@ public partial class SessionPage : ContentPage
         }
         catch (JsonException)
         {
-            ResultLabel.Text = "Проверьте синтаксис JSON.";
+            ResultLabel.Text = AppResources.InvalidJson;
         }
         finally
         {

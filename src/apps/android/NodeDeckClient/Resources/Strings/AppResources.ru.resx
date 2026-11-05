@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Connections" xml:space="preserve">
+    <value>Подключения</value>
+  </data>
+  <data name="ScanQrCode" xml:space="preserve">
+    <value>Сканировать QR-код</value>
+  </data>
+  <data name="SavedConnections" xml:space="preserve">
+    <value>Сохранённые подключения</value>
+  </data>
+  <data name="WifiFilter" xml:space="preserve">
+    <value>Фильтр Wi-Fi</value>
+  </data>
+  <data name="BluetoothFilter" xml:space="preserve">
+    <value>Фильтр Bluetooth</value>
+  </data>
+  <data name="FindConnection" xml:space="preserve">
+    <value>Найти подключение</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>Подключиться</value>
+  </data>
+  <data name="Configure" xml:space="preserve">
+    <value>Настроить</value>
+  </data>
+  <data name="NoConnectionsFound" xml:space="preserve">
+    <value>Подключений не найдено</value>
+  </data>
+  <data name="Connection" xml:space="preserve">
+    <value>Подключение</value>
+  </data>
+  <data name="Retry" xml:space="preserve">
+    <value>Повторить</value>
+  </data>
+  <data name="OtherConnections" xml:space="preserve">
+    <value>Другие подключения</value>
+  </data>
+  <data name="CommandMessage" xml:space="preserve">
+    <value>Сообщение для команды</value>
+  </data>
+  <data name="GatewayAddress" xml:space="preserve">
+    <value>Адрес шлюза</value>
+  </data>
+  <data name="TcpPort" xml:space="preserve">
+    <value>Порт TCP</value>
+  </data>
+  <data name="KeepCurrentSecret" xml:space="preserve">
+    <value>Оставьте пустым, чтобы сохранить текущий</value>
+  </data>
+  <data name="NewGatewaySecret" xml:space="preserve">
+    <value>Новый секрет шлюза</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>Сохранить</value>
+  </data>
+  <data name="TcpSettings" xml:space="preserve">
+    <value>Параметры TCP</value>
+  </data>
+  <data name="InvalidTcpSettings" xml:space="preserve">
+    <value>Укажите адрес и порт от 1 до 65535.</value>
+  </data>
+  <data name="SaveSettingsFailed" xml:space="preserve">
+    <value>Не удалось сохранить настройки</value>
+  </data>
+  <data name="ConnectingToGateway" xml:space="preserve">
+    <value>Подключение к шлюзу…</value>
+  </data>
+  <data name="WaitingForBluetoothGateway" xml:space="preserve">
+    <value>Ожидание шлюза по Bluetooth LE…</value>
+  </data>
+  <data name="MissingCommandList" xml:space="preserve">
+    <value>Шлюз не вернул список команд.</value>
+  </data>
+  <data name="ConnectionRestored" xml:space="preserve">
+    <value>Связь со шлюзом восстановлена.</value>
+  </data>
+  <data name="GatewayDisconnected" xml:space="preserve">
+    <value>Шлюз отключился.</value>
+  </data>
+  <data name="GatewayTimeout" xml:space="preserve">
+    <value>Истекло время ожидания шлюза.</value>
+  </data>
+  <data name="ReconnectionFailed" xml:space="preserve">
+    <value>Связь потеряна. Не удалось восстановить подключение</value>
+  </data>
+  <data name="ConnectionFailed" xml:space="preserve">
+    <value>Не удалось подключиться</value>
+  </data>
+  <data name="ConnectionLost" xml:space="preserve">
+    <value>Связь со шлюзом потеряна</value>
+  </data>
+  <data name="ReconnectingToProfile" xml:space="preserve">
+    <value>Повторное подключение к «{0}»…</value>
+  </data>
+  <data name="BluetoothAndroidOnly" xml:space="preserve">
+    <value>Подключение по Bluetooth LE доступно на Android.</value>
+  </data>
+  <data name="Commands" xml:space="preserve">
+    <value>Команды</value>
+  </data>
+  <data name="NoCommands" xml:space="preserve">
+    <value>Шлюз не опубликовал команды.</value>
+  </data>
+  <data name="JsonArguments" xml:space="preserve">
+    <value>Аргументы JSON: {0}</value>
+  </data>
+  <data name="Run" xml:space="preserve">
+    <value>Выполнить</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Отмена</value>
+  </data>
+  <data name="InvalidJson" xml:space="preserve">
+    <value>Проверьте синтаксис JSON.</value>
+  </data>
+  <data name="WifiDevelopmentProfile" xml:space="preserve">
+    <value>Wi-Fi · разработка</value>
+  </data>
+  <data name="BluetoothDevelopmentProfile" xml:space="preserve">
+    <value>Bluetooth · разработка</value>
+  </data>
+  <data name="Ok" xml:space="preserve">
+    <value>ОК</value>
+  </data>
+  <data name="DefaultMessage" xml:space="preserve">
+    <value>Привет с телефона</value>
+  </data>
+  <data name="Home" xml:space="preserve">
+    <value>Главная</value>
+  </data>
+</root>
+
