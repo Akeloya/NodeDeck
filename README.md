@@ -31,6 +31,19 @@ and `AppResources.ru.resx`, with matching properties in `AppResources.cs`.
 Built-in connection names are localized when displayed, including previously saved
 Russian names. Custom connection names retain their original text.
 
+## Bluetooth LE troubleshooting on Windows
+
+NodeDeck's Bluetooth transport requires Bluetooth Low Energy (BLE). If your adapter
+appears as **Generic Bluetooth Adapter** in Windows Device Manager, the installed
+generic driver may not provide working BLE support, even if Bluetooth is enabled.
+
+If the Bluetooth connection does not work or times out, install the appropriate
+Windows driver from the adapter manufacturer's official website, then reconnect
+the adapter and try again. Windows may not automatically download or prompt you
+to install the required driver when the adapter is first connected. The adapter
+hardware must also support BLE; installing a driver cannot add BLE to a
+Bluetooth Classic-only adapter.
+
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for the development plan,

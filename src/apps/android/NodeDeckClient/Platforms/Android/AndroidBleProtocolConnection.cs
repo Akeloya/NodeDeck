@@ -62,6 +62,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         var server = manager.OpenGattServer(activity, callback)
             ?? throw new IOException("Android could not open a BLE GATT server.");
         var connection = new AndroidBleProtocolConnection(server, callback, advertiser, new ServiceAdvertiseCallback());
+        var setupStage = "registering the NodeDeck GATT service";
         try
         {
             callback.Connection = connection;
@@ -82,6 +83,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
                 throw new IOException("Android rejected the NodeDeck GATT service.");
             await callback.ServiceAdded.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
             Diagnostic?.Invoke("NodeDeck GATT service registered; starting BLE advertising…");
+            setupStage = "starting BLE advertising";
 
             var data = new AdvertiseData.Builder()!
                 // A 128-bit service UUID already consumes 18 of the legacy 31-byte
@@ -99,6 +101,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
             advertiser.StartAdvertising(settings, data, connection._advertiseCallback);
             await ((ServiceAdvertiseCallback)connection._advertiseCallback).Started.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
             Diagnostic?.Invoke("BLE advertising started; waiting for computer to connect…");
+            setupStage = "waiting for the computer to connect and enable BLE notifications (120 seconds). Check the computer's BLE scan log";
             await callback.Connected.Task.WaitAsync(TimeSpan.FromSeconds(WaitForGatewaySeconds), cancellationToken);
             Diagnostic?.Invoke("BLE notifications enabled. Connecting to gateway…");
             return connection;
@@ -106,7 +109,9 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         catch (TimeoutException ex)
         {
             await connection.DisposeAsync();
-            throw new TimeoutException("Timed out while setting up the NodeDeck BLE connection.", ex);
+            var message = $"Timed out while {setupStage}.";
+            Diagnostic?.Invoke(message);
+            throw new TimeoutException(message, ex);
         }
         catch (Exception ex)
         {
