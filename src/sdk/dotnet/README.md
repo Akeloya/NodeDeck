@@ -1,0 +1,194 @@
+# .NET gateway commands
+
+`GatewayCommand` combines command metadata, argument/result descriptors, a handler,
+and a runtime availability policy. Register the complete command with
+`GatewayBuilder.AddCommand(command)` or with `gateway.Commands.Add(command)` after
+building the server. `CommandDefinition` and `CommandAvailability` remain protocol
+DTOs: they describe the snapshot sent to clients, not executable gateway behavior.
+
+```csharp
+using System.Net;
+using System.Text.Json;
+using NodeDeck.Core.Protocol;
+using NodeDeck.Gateway;
+using NodeDeck.Transport.Tcp;
+
+var emptyObject = new ValueDescriptor
+{
+    Type = NodeDeck.Core.Protocol.ValueType.Object,
+    Properties = new Dictionary<string, ValueDescriptor>(),
+    Required = [],
+    AdditionalProperties = false
+};
+var ready = true;
+var availability = new DelegateCommandAvailability(() =>
+    Volatile.Read(ref ready)
+        ? new CommandAvailability(true)
+        : new CommandAvailability(false, "Device is offline"));
+GatewayCommandHandler handler = (_, _) =>
+    ValueTask.FromResult(JsonSerializer.SerializeToElement(new { }));
+var command = new GatewayCommand("device.ping", "Ping", null,
+    emptyObject, emptyObject, handler, availability);
+
+await using var gateway = new GatewayBuilder("device", "Device", "development-secret")
+    .AddCommand(command)
+    .Build(new TcpJsonServer(IPAddress.Loopback, 0));
+gateway.Start();
+
+Volatile.Write(ref ready, false); // Subsequent invocations are rejected with the reason above.
+gateway.Commands.Replace(new GatewayCommand("device.ping", "Ping", null,
+    emptyObject, emptyObject, handler)); // Omitting a policy means always available.
+gateway.Commands.Remove("device.ping");
+gateway.Commands.Add(command);
+```
+
+Implement `ICommandAvailability.GetAvailability()` for policies that need their own
+dependencies or state. `DelegateCommandAvailability` adapts a function. Policies
+run when producing capabilities (including the catalog revision in `ui.get`) and
+again before each new invocation. They should be fast, side-effect free, and safe
+for concurrent calls. A policy failure prevents execution and returns a protocol
+error. Policies do not reserve resources: handlers must still handle state changes
+between the check and execution.
+
+The registry supports concurrent readers and writers. `Add` rejects duplicate IDs,
+`Replace` requires an existing ID, and `Remove` returns whether a command existed.
+`GetCommands()` returns a snapshot of registered commands. Descriptors supplied to a
+command must be treated as immutable; use `Replace` to change a command's schema or
+handler. Handler and policy instances can be shared between commands.
+
+Each invocation captures one registry snapshot. Replacing or removing a command
+does not cancel invocations that already captured it. An identical retried request
+keeps its cached result even if registration or availability has since changed.
+Each built server has its own registry; later builder changes do not change it.
+
+Registration changes update both the catalog and UI revisions. An invocation using
+an old UI revision receives `schema_outdated`. Availability changes update the
+catalog revision, while preserving the UI revision so the final availability check
+can return `command_unavailable`. `ui.get` references the current catalog revision;
+clients must refresh both documents if their revisions do not match. Protocol 0.1
+has no change subscriptions, so catalog changes are discovered on refresh.
+
+Migration: replace `AddCommand(definition, handler)` with
+`AddCommand(new GatewayCommand(id, title, description, parameters, result, handler,
+availability))`. The old two-argument registration overload is removed. Existing
+wire messages and clients keep the same format.
+
+## Resolving methods with attributes
+
+`CommandResolver` translates attributed methods into complete `GatewayCommand`
+instances and registers them in a supplied `GatewayCommandRegistry`. The registry
+owns runtime registration; the resolver handles reflection, schema generation,
+argument binding, and availability binding.
+
+```csharp
+var commands = new DeviceCommands(new CommandResolver(gateway.Commands));
+commands.Init();
+
+public sealed class DeviceCommands(CommandResolver resolver)
+{
+    public bool IsConnected { get; set; }
+    public bool CanPing => IsConnected;
+
+    public void Init() => resolver.Resolve(this);
+
+    [NodeCommand("device.ping", "Ping", Description = "Check the device",
+        UnavailableReason = "Device is disconnected")]
+    public void Ping() { /* Perform the action. */ }
+
+    private bool IsReady() => IsConnected;
+
+    [NodeCommand("device.echo", "Echo", CanExecute = nameof(IsReady))]
+    public Task<string> Echo(string message, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(message);
+    }
+
+    public Func<bool> AllowReset { get; set; } = () => true;
+
+    [NodeCommand("device.reset", "Reset", CanExecute = nameof(AllowReset))]
+    public void Reset() { /* Perform the action. */ }
+}
+```
+
+By default the resolver uses an optional `bool Can{MethodName}` property. Without
+that property the command is always available. `CanExecute = nameof(Member)`
+overrides the convention and can name a bool property, a parameterless bool method,
+or a `Func<bool>` property on the owner. C# attribute arguments cannot contain
+delegates or lambdas, so the attribute names the member supplying the check.
+The member is evaluated on each availability check, including reading the current
+delegate from a delegate property. Invalid or missing explicit bindings fail during
+resolution; they never silently enable a command.
+
+Supported signatures:
+
+- Public or non-public instance methods, including inherited visible methods and
+  overrides with inherited attributes. Only attributed methods are exposed.
+- `string`, `bool`, `int`, `long`, `float`, `double`, `decimal`, and arrays of these
+  types for parameters and return values. Parameter names become JSON field names.
+  `long` is restricted to the protocol's JSON-safe integer range.
+- Optional parameters with non-null defaults. Required parameters appear in the
+  generated schema's `required` array.
+- One optional `CancellationToken` parameter, injected by the gateway and omitted
+  from the wire schema.
+- `void`, `Task`, and `ValueTask` produce an empty object result. A supported return
+  value `T`, `Task<T>`, or `ValueTask<T>` produces `{ "value": ... }`.
+
+Null values, arbitrary object DTOs, static/generic methods, `ref`/`out` parameters,
+and `async void` are unsupported. Use a manually constructed `GatewayCommand` for
+custom object schemas and serialization. Resolution validates the entire owner
+before publishing commands; duplicate IDs also reject the entire batch. Calling
+`Resolve` twice for the same registered IDs is an error. Remove or replace commands
+through the registry. Registered handlers retain their owner, and the owner remains
+responsible for thread safety and disposal of its dependencies.
+
+The console's `ProjectCommands` demonstrates `Init()` calling `Resolve(this)` and
+the `CanOpenProjectIssues` convention. It publishes `project.openIssues` with no
+arguments. The existing mobile client renders its title as a button automatically
+from `capabilities.commands` when connecting. Pressing it opens
+`https://github.com/Akeloya/NodeDeck/issues` in the gateway computer's default browser.
+Registration itself does not launch the browser.
+
+## Command names and descriptions from resources
+
+Use the resource constructor instead of a literal title:
+
+```csharp
+public sealed class ProjectCommands
+{
+    [NodeCommand("project.openIssues", typeof(CommandTexts))]
+    public void OpenIssues() { /* Open the project issues. */ }
+}
+
+public static class CommandTexts
+{
+    public static string ProjectCommands_OpenIssues_name => "Project issues";
+    public static string ProjectCommands_OpenIssues_description => "Open the project's issues";
+
+    // A distinct command owner named projectCommands can use this same resource type.
+    public static string projectCommands_OpenIssues_name => "Other project issues";
+    public static string projectCommands_OpenIssues_description => "Open the other project's issues";
+}
+```
+
+The keys are `{ClassName}_{MethodName}_name` and
+`{ClassName}_{MethodName}_description`, preserving the exact case of both names.
+`ClassName` is the runtime type name of the object passed to `Resolve`, including
+when its method is inherited. The resolver first looks for readable static string
+properties (public or internal/private) on the resource type. Their getters can
+return localized strings from a strongly typed resource class.
+
+If the name property does not exist, the resolver uses `ResourceManager(resourceType)`
+to read embedded resources whose base name matches the resource type's full name.
+It uses case-sensitive lookup and `CurrentUICulture`, with normal culture fallback.
+Text is captured during `Resolve`; changing culture later requires resolving and
+registering the commands again. A missing or blank name rejects the whole batch;
+a missing description is allowed. An explicit `Description` on the attribute
+overrides the resource description.
+
+The standard .NET `.resx` compiler rejects keys that differ only in case. For such
+names in one resource type, expose exact-case static properties as above; if they
+need `.resx` translations, forward each property to a distinct underlying resource
+key (for example `UpperProjectIssuesName` and `LowerProjectIssuesName`). This keeps
+`ProjectCommands` and `projectCommands` independent without losing strings during
+resource compilation.

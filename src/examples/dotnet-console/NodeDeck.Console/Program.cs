@@ -44,9 +44,13 @@ namespace NodeDeck.Console
                 var builder = new GatewayBuilder("console-demo", "NodeDeck Console Demo", options.Secret);
                 DemoCommands.Register(builder);
                 gateway = builder.BuildWithListeners(listeners);
+                var projectCommands = new ProjectCommands(new CommandResolver(gateway.Commands));
+                projectCommands.Init();
             }
             catch (Exception ex) when (ex is JsonException or IOException or ArgumentException or UnauthorizedAccessException)
             {
+                if (gateway is not null)
+                    await gateway.DisposeAsync();
                 System.Console.Error.WriteLine(ex.Message);
                 return 2;
             }

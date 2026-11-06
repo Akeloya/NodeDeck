@@ -22,6 +22,9 @@ Gateways can connect to other gateways, allowing distributed systems built with 
 See [src/protocol/README.md](src/protocol/README.md) for the draft gateway protocol,
 authentication, capabilities, UI schemas, and command execution examples.
 
+For .NET command registration and runtime availability, see the
+[.NET gateway guide](src/sdk/dotnet/README.md).
+
 ## Client localization
 
 The MAUI client uses English as its neutral language and includes Russian translations.

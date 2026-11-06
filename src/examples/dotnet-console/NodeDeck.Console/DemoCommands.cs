@@ -39,24 +39,22 @@ internal static class DemoCommands
             ("phone.action", "Run action")
         })
         {
-            builder.AddCommand(
-                new CommandDefinition(id, title, "Demo command invoked from the phone", 
-                parameters, resultDescriptor, new CommandAvailability(true)),
+            builder.AddCommand(new GatewayCommand(id, title, "Demo command invoked from the phone",
+                parameters, resultDescriptor,
                 (arguments, _) =>
                 {
                     var message = arguments.GetProperty("message").GetString()!;
                     System.Console.WriteLine($"[{DateTimeOffset.Now:HH:mm:ss}] Phone command: {id}; message: {message}");
                     return ValueTask.FromResult(JsonSerializer.SerializeToElement(new { reply = $"Console received '{message}' via {id}." }));
-                });
+                }));
         }
 
-        builder.AddCommand(
-            new CommandDefinition("key.action", "Open explorer", "Command to generate keyboard event",
-                parameters, resultDescriptor, new CommandAvailability(true)),
+        builder.AddCommand(new GatewayCommand("key.action", "Open explorer", "Command to generate keyboard event",
+            parameters, resultDescriptor,
             (arguments, _) =>
             {
                 new InputSimulator().Keyboard.ModifiedKeyStroke(VirtualKeyCode.LWIN, VirtualKeyCode.VK_E);
                 return ValueTask.FromResult(JsonSerializer.SerializeToElement(new { reply = "Command Win+E activated" }));
-            });
+            }));
     }
 }

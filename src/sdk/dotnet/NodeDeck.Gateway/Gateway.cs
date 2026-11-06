@@ -9,26 +9,19 @@ using NodeDeck.Transport.Tcp;
 
 namespace NodeDeck.Gateway;
 
-public delegate ValueTask<JsonElement> GatewayCommandHandler(JsonElement arguments, CancellationToken cancellationToken);
-public sealed record GatewayCommand(CommandDefinition Definition, GatewayCommandHandler Handler);
-
 public sealed class GatewayBuilder(string gatewayId, string name, string sharedSecret)
 {
-    private readonly List<GatewayCommand> _commands = [];
-    public GatewayBuilder AddCommand(CommandDefinition definition, GatewayCommandHandler handler)
+    private readonly GatewayCommandRegistry _commands = new();
+    public GatewayBuilder AddCommand(GatewayCommand command)
     {
-        ArgumentNullException.ThrowIfNull(definition);
-        ArgumentNullException.ThrowIfNull(handler);
-        if (_commands.Any(x => x.Definition.Id == definition.Id))
-            throw new ArgumentException($"Command '{definition.Id}' already exists.");
-        _commands.Add(new GatewayCommand(definition, handler));
+        _commands.Add(command);
         return this;
     }
     public GatewayServer Build(IProtocolMessageListener listener, string? description = null) =>
         BuildWithListeners([listener ?? throw new ArgumentNullException(nameof(listener))], description);
 
     public GatewayServer BuildWithListeners(IEnumerable<IProtocolMessageListener> listeners, string? description = null) =>
-        new(gatewayId, name, description, sharedSecret, _commands, listeners);
+        new(gatewayId, name, description, sharedSecret, _commands.GetCommands(), listeners);
 }
 
 /// <summary>Minimal version 0.1 gateway server. TCP is intended for local development; configure a secure tunnel before using real secrets.</summary>
@@ -36,7 +29,6 @@ public sealed class GatewayServer : IAsyncDisposable
 {
     private readonly string _gatewayId, _name, _sharedSecret;
     private readonly string? _description;
-    private readonly Dictionary<string, GatewayCommand> _commands;
     private readonly IProtocolMessageListener[] _listeners;
     private readonly ConcurrentDictionary<string, Session> _sessions = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, CachedInvocation> _dedup = new(StringComparer.Ordinal);
@@ -45,10 +37,6 @@ public sealed class GatewayServer : IAsyncDisposable
     private readonly CancellationTokenSource _shutdown = new();
     private readonly List<Task> _connections = [];
     private readonly object _tasksLock = new();
-    private readonly string _capabilitiesRevision = "cap-1";
-    private readonly string _uiRevision = "ui-1";
-    private readonly CapabilitiesDocument _capabilities;
-    private readonly UiDocument _ui;
     private Task? _acceptLoop;
 
     internal GatewayServer(string gatewayId, string name, string? description, string sharedSecret,
@@ -61,18 +49,15 @@ public sealed class GatewayServer : IAsyncDisposable
         _name = name;
         _description = description;
         _sharedSecret = sharedSecret;
-        _commands = commands.ToDictionary(x => x.Definition.Id, StringComparer.Ordinal);
-        _capabilities = new CapabilitiesDocument(new GatewayInfo(gatewayId, name, description), _capabilitiesRevision,
-            [ProtocolFeature.Commands, ProtocolFeature.OperationsPoll, ProtocolFeature.Ui], ProtocolLimits.Default,
-            _commands.Values.Select(x => x.Definition).ToArray(), [], []);
-        ProtocolValidator.ValidateCapabilities(_capabilities);
-        _ui = new UiDocument(_uiRevision, _capabilitiesRevision, null, []);
+        foreach (var command in commands)
+            Commands.Add(command);
         _listeners = listeners.ToArray();
         if (_listeners.Length == 0 || _listeners.Any(listener => listener is null))
             throw new ArgumentException("Provide at least one listener and no null entries.", nameof(listeners));
     }
 
     public string GatewayId => _gatewayId;
+    public GatewayCommandRegistry Commands { get; } = new();
     public int? TcpPort => _listeners.OfType<TcpJsonServer>().FirstOrDefault()?.Port;
     public event Action? ClientLoggedOut;
     public event Action<string, string, JsonElement>? CommandReceived;
@@ -175,7 +160,7 @@ public sealed class GatewayServer : IAsyncDisposable
                     if (request.Type == RequestType.ProtocolHello && response.Error is null)
                     {
                         helloDone = true;
-                        maxBytes = _capabilities.Limits.MaxMessageBytes;
+                        maxBytes = ProtocolLimits.Default.MaxMessageBytes;
                         connection.SetMaxMessageBytes(maxBytes);
                     }
                     if (request.Type == RequestType.AuthLogin && response.Error is null)
@@ -222,7 +207,7 @@ public sealed class GatewayServer : IAsyncDisposable
                 var hello = request.Payload.Deserialize<HelloPayload>(ProtocolJson.Options) ?? throw new InvalidRequestException("Invalid hello payload.");
                 var selected = hello.SupportedVersions.Contains(ProtocolConstants.CurrentVersion, StringComparer.Ordinal);
                 return selected
-                    ? ProtocolResponse.Success(request, new HelloResult(ProtocolConstants.CurrentVersion, _gatewayId, [AuthMethod.SharedSecret], _capabilities.Limits.MaxMessageBytes))
+                    ? ProtocolResponse.Success(request, new HelloResult(ProtocolConstants.CurrentVersion, _gatewayId, [AuthMethod.SharedSecret], ProtocolLimits.Default.MaxMessageBytes))
                     : ProtocolResponse.Failure(request, new ProtocolError(ProtocolErrorCode.UnsupportedVersion, "No supported protocol version.", false));
             }
             case RequestType.AuthLogin:
@@ -240,9 +225,12 @@ public sealed class GatewayServer : IAsyncDisposable
                     _sessions.TryRemove(logoutToken, out _);
                 return ProtocolResponse.Success(request, new LogoutResult(true));
             case RequestType.CapabilitiesGet:
-                return ProtocolResponse.Success(request, _capabilities);
+                return ProtocolResponse.Success(request, GetCapabilities(Commands.GetSnapshot()));
             case RequestType.UiGet:
-                return ProtocolResponse.Success(request, _ui);
+            {
+                var snapshot = Commands.GetSnapshot();
+                return ProtocolResponse.Success(request, new UiDocument(snapshot.UiRevision, GetCapabilities(snapshot).Revision, null, []));
+            }
             case RequestType.CommandInvoke:
                 return await InvokeAsync(request, cancellationToken).ConfigureAwait(false);
             case RequestType.OperationGet:
@@ -255,6 +243,16 @@ public sealed class GatewayServer : IAsyncDisposable
             default:
                 return ProtocolResponse.Failure(request, new ProtocolError(ProtocolErrorCode.UnsupportedType, "Unknown request type.", false));
         }
+    }
+
+    private CapabilitiesDocument GetCapabilities(GatewayCommandRegistry.Snapshot snapshot)
+    {
+        var definitions = snapshot.Commands.Values.Select(command => command.GetDefinition()).ToArray();
+        // Availability is part of the catalog, but changing it does not invalidate the UI schema.
+        var hash = Convert.ToHexString(SHA256.HashData(ProtocolJson.Serialize(definitions)));
+        return new CapabilitiesDocument(new GatewayInfo(_gatewayId, _name, _description), $"cap-{snapshot.Revision}-{hash}",
+            [ProtocolFeature.Commands, ProtocolFeature.OperationsPoll, ProtocolFeature.Ui], ProtocolLimits.Default,
+            definitions, [], []);
     }
 
     private async Task<ProtocolResponse> InvokeAsync(ProtocolRequest request, CancellationToken cancellationToken)
@@ -285,15 +283,16 @@ public sealed class GatewayServer : IAsyncDisposable
             return cached.Response;
         }
         ProtocolResponse response;
-        if (payload.UiRevision is not null && payload.UiRevision != _uiRevision)
+        var snapshot = Commands.GetSnapshot();
+        if (payload.UiRevision is not null && payload.UiRevision != snapshot.UiRevision)
             response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Rejected, Error: new ProtocolError(ProtocolErrorCode.SchemaOutdated, "UI schema has changed.", false)));
-        else if (!_commands.TryGetValue(payload.CommandId, out var command))
+        else if (!snapshot.Commands.TryGetValue(payload.CommandId, out var command))
             response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Rejected, Error: new ProtocolError(ProtocolErrorCode.CommandNotFound, "Command not found.", false)));
-        else if (!command.Definition.Availability.Enabled)
-            response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Rejected, Error: new ProtocolError(ProtocolErrorCode.CommandUnavailable, command.Definition.Availability.Reason ?? "Command unavailable.", false)));
+        else if (command.GetAvailability() is { Enabled: false } availability)
+            response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Rejected, Error: new ProtocolError(ProtocolErrorCode.CommandUnavailable, availability.Reason ?? "Command unavailable.", false)));
         else
         {
-            var errors = ProtocolValidator.ValidateArguments(command.Definition.Parameters, payload.Arguments);
+            var errors = ProtocolValidator.ValidateArguments(command.Parameters, payload.Arguments);
             if (errors.Count != 0)
                 response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Rejected, Error: new ProtocolError(ProtocolErrorCode.InvalidArguments, errors[0], false)));
             else
@@ -302,7 +301,7 @@ public sealed class GatewayServer : IAsyncDisposable
                 {
                     CommandReceived?.Invoke("operator", payload.CommandId, payload.Arguments.Clone());
                     var result = await command.Handler(payload.Arguments, cancellationToken).ConfigureAwait(false);
-                    var outputErrors = ProtocolValidator.ValidateArguments(command.Definition.Result, result);
+                    var outputErrors = ProtocolValidator.ValidateArguments(command.Result, result);
                     if (outputErrors.Count != 0)
                         throw new InvalidOperationException("Handler returned an invalid result.");
                     response = ProtocolResponse.Success(request, new CommandExecutionResult(ExecutionStatus.Completed, result));
@@ -317,7 +316,7 @@ public sealed class GatewayServer : IAsyncDisposable
                 }
             }
         }
-        _dedup[key] = new CachedInvocation(fingerprint, response, DateTimeOffset.UtcNow.AddMilliseconds(_capabilities.Limits.DeduplicationWindowMs));
+        _dedup[key] = new CachedInvocation(fingerprint, response, DateTimeOffset.UtcNow.AddMilliseconds(ProtocolLimits.Default.DeduplicationWindowMs));
         return response;
     }
 

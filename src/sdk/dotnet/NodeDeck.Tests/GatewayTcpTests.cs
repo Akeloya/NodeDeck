@@ -100,6 +100,8 @@ public class GatewayTcpTests
         var invoke = new ProtocolRequest(ProtocolConstants.CurrentVersion, "same-id", RequestType.CommandInvoke, payload, token);
         await raw.SendAsync(invoke);
         var first = await raw.ReceiveAsync<ProtocolResponse>();
+        // A retry keeps its original outcome even after the command has been removed.
+        gateway.Commands.Remove("demo.echo");
         await raw.SendAsync(invoke);
         var second = await raw.ReceiveAsync<ProtocolResponse>();
         Assert.That(second!.Result!.Value.GetProperty(ProtocolField.Output).GetProperty("echo").GetString(), Is.EqualTo(first!.Result!.Value.GetProperty(ProtocolField.Output).GetProperty("echo").GetString()));
@@ -110,13 +112,12 @@ public class GatewayTcpTests
     {
         var executions = 0;
         count = () => Volatile.Read(ref executions);
-        var definition = new CommandDefinition("demo.echo", "Echo", null, Arguments, Result, new CommandAvailability(true));
         return new GatewayBuilder("test-gateway", "Test Gateway", "test-secret")
-            .AddCommand(definition, (arguments, _) =>
+            .AddCommand(new GatewayCommand("demo.echo", "Echo", null, Arguments, Result, (arguments, _) =>
             {
                 Interlocked.Increment(ref executions);
                 return ValueTask.FromResult(JsonSerializer.SerializeToElement(new { echo = arguments.GetProperty("value").GetString() }));
-            }).Build(new TcpJsonServer(new TcpListenerSettings { IPAddress = "127.0.0.1", Port = 0 }));
+            })).Build(new TcpJsonServer(new TcpListenerSettings { IPAddress = "127.0.0.1", Port = 0 }));
     }
 
     private static ProtocolRequest Request<T>(string id, string type, T payload) =>

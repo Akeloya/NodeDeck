@@ -131,12 +131,7 @@ public static class ProtocolValidator
         Unique(catalog.Resources.Select(x => x.Id), "resource");
         Unique(catalog.Endpoints.Select(x => x.Id), "endpoint");
         foreach (var c in catalog.Commands)
-        {
-            ValidateDescriptor(c.Parameters, "command parameters");
-            ValidateDescriptor(c.Result, "command result");
-            if (c.Parameters.Type != ValueType.Object || c.Result.Type != ValueType.Object)
-                throw new InvalidRequestException("Command parameters and result must be objects.");
-        }
+            ValidateCommandDefinition(c);
         foreach (var endpoint in catalog.Endpoints)
         {
             if (endpoint.Kind is not (EndpointKind.Camera or EndpointKind.Chat or EndpointKind.Custom))
@@ -147,6 +142,15 @@ public static class ProtocolValidator
         }
         foreach (var resource in catalog.Resources)
             ValidateAuth(resource.Auth, EndpointProtocol.Https);
+    }
+
+    public static void ValidateCommandDefinition(CommandDefinition command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ValidateDescriptor(command.Parameters, "command parameters");
+        ValidateDescriptor(command.Result, "command result");
+        if (command.Parameters.Type != ValueType.Object || command.Result.Type != ValueType.Object)
+            throw new InvalidRequestException("Command parameters and result must be objects.");
     }
 
     public static void ValidateUi(UiDocument ui, CapabilitiesDocument capabilities)
