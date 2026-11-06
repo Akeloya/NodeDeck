@@ -133,5 +133,8 @@
   <data name="Home" xml:space="preserve">
     <value>Home</value>
   </data>
+  <data name="ClosePanel" xml:space="preserve">
+    <value>Close panel</value>
+  </data>
 </root>
 

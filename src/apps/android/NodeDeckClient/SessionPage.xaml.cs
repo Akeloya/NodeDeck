@@ -17,6 +17,10 @@ public partial class SessionPage : ContentPage
     private CancellationTokenSource? _connected;
     private NodeDeckClientConnection? _client;
     private Task _command = Task.CompletedTask;
+    private enum PanelSide { Left, Right, Bottom }
+    private PanelSide? _openPanel;
+    private bool _panelAnimating;
+    private int _panelRevision;
     internal Task Completion { get; private set; } = Task.CompletedTask;
 
     public SessionPage(ConnectionProfile profile)
@@ -34,6 +38,7 @@ public partial class SessionPage : ContentPage
 
     protected override void OnNavigatedFrom(NavigatedFromEventArgs args)
     {
+        ResetPanel();
         _lifetime.Cancel();
         base.OnNavigatedFrom(args);
     }
@@ -76,12 +81,114 @@ public partial class SessionPage : ContentPage
 
     private void ShowConnection(string title, string status, bool connecting)
     {
+        ResetPanel();
         Title = AppResources.Connection;
         CommandsPanel.IsVisible = false;
         ConnectionPanel.IsVisible = true;
         ConnectionTitle.Text = title;
         ConnectionStatus.Text = status;
         Connecting.IsVisible = Connecting.IsRunning = connecting;
+    }
+
+    private async void OnOpenPanelSwiped(object? sender, SwipedEventArgs e)
+    {
+        PanelSide? side = e.Direction switch
+        {
+            SwipeDirection.Right => PanelSide.Left,
+            SwipeDirection.Left => PanelSide.Right,
+            SwipeDirection.Up => PanelSide.Bottom,
+            _ => null
+        };
+        if (_panelAnimating || _openPanel is not null || !CommandsPanel.IsVisible
+            || CommandsPanel.Width <= 0 || CommandsPanel.Height <= 0 || side is not { } panel)
+            return;
+
+        _openPanel = panel;
+        var bottom = panel == PanelSide.Bottom;
+        SlidePanel.WidthRequest = bottom ? -1 : Math.Min(320, CommandsPanel.Width * 0.85);
+        SlidePanel.HeightRequest = bottom ? Math.Min(300, CommandsPanel.Height * 0.45) : -1;
+        SlidePanel.HorizontalOptions = panel switch
+        {
+            PanelSide.Left => LayoutOptions.Start,
+            PanelSide.Right => LayoutOptions.End,
+            _ => LayoutOptions.Fill
+        };
+        SlidePanel.VerticalOptions = bottom ? LayoutOptions.End : LayoutOptions.Fill;
+        SlidePanelText.Text = panel switch
+        {
+            PanelSide.Left => "command groups",
+            PanelSide.Right => "command options",
+            _ => "additional panel"
+        };
+        var (x, y) = PanelOffset();
+        SlidePanel.TranslationX = x;
+        SlidePanel.TranslationY = y;
+        PanelBackdrop.Opacity = 0;
+        PanelBackdrop.IsVisible = SlidePanel.IsVisible = true;
+        CommandsContent.InputTransparent = true;
+        await AnimatePanelAsync(open: true);
+    }
+
+    private (double X, double Y) PanelOffset() => _openPanel switch
+    {
+        PanelSide.Left => (-SlidePanel.WidthRequest, 0),
+        PanelSide.Right => (SlidePanel.WidthRequest, 0),
+        _ => (0, SlidePanel.HeightRequest)
+    };
+
+    private async Task AnimatePanelAsync(bool open)
+    {
+        if (_panelAnimating || _openPanel is null)
+            return;
+
+        _panelAnimating = true;
+        var revision = _panelRevision;
+        var (x, y) = open ? (0d, 0d) : PanelOffset();
+        try
+        {
+            await Task.WhenAll(
+                SlidePanel.TranslateToAsync(x, y, 220, Easing.CubicOut),
+                PanelBackdrop.FadeToAsync(open ? 0.35 : 0, 220));
+            if (!open && revision == _panelRevision)
+                ResetPanel();
+        }
+        finally
+        {
+            if (revision == _panelRevision)
+                _panelAnimating = false;
+        }
+    }
+
+    private async void OnClosePanel(object? sender, EventArgs e) => await AnimatePanelAsync(open: false);
+
+    private async void OnPanelSwiped(object? sender, SwipedEventArgs e)
+    {
+        if ((_openPanel, e.Direction) is (PanelSide.Left, SwipeDirection.Left)
+            or (PanelSide.Right, SwipeDirection.Right) or (PanelSide.Bottom, SwipeDirection.Down))
+            await AnimatePanelAsync(open: false);
+    }
+
+    protected override bool OnBackButtonPressed()
+    {
+        if (_openPanel is null)
+            return base.OnBackButtonPressed();
+
+        OnClosePanel(this, EventArgs.Empty);
+        return true;
+    }
+
+    private void OnCommandsPanelSizeChanged(object? sender, EventArgs e) => ResetPanel();
+
+    private void ResetPanel()
+    {
+        _panelRevision++;
+        SlidePanel.CancelAnimations();
+        PanelBackdrop.CancelAnimations();
+        SlidePanel.IsVisible = PanelBackdrop.IsVisible = false;
+        SlidePanel.TranslationX = SlidePanel.TranslationY = PanelBackdrop.Opacity = 0;
+        CommandsContent.InputTransparent = false;
+        _openPanel = null;
+        _panelAnimating = false;
     }
 
     private async Task RunSessionAsync(CancellationToken lifetime)

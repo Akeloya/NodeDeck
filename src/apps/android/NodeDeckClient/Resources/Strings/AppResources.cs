@@ -56,5 +56,6 @@ public static class AppResources
     public static string Ok => GetString(nameof(Ok));
     public static string DefaultMessage => GetString(nameof(DefaultMessage));
     public static string Home => GetString(nameof(Home));
+    public static string ClosePanel => GetString(nameof(ClosePanel));
 }
 

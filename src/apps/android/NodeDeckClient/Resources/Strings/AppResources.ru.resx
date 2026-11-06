@@ -133,5 +133,8 @@
   <data name="Home" xml:space="preserve">
     <value>Главная</value>
   </data>
+  <data name="ClosePanel" xml:space="preserve">
+    <value>Закрыть панель</value>
+  </data>
 </root>
 

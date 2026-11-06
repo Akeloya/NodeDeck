@@ -11,7 +11,11 @@ public partial class MainPage : ContentPage
     public MainPage()
     {
         InitializeComponent();
+        AppVersionLabel.Text = $"v{AppInfo.Current.VersionString}";
     }
+
+    private async void OnPoweredByClicked(object? sender, EventArgs e) =>
+        await Launcher.Default.TryOpenAsync(new Uri("https://github.com/Akeloya/NodeDeck/issues"));
 
     private void OnSearchChanged(object? sender, TextChangedEventArgs e)
     {

@@ -3,21 +3,60 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:strings="clr-namespace:NodeDeckClient.Resources.Strings"
              x:Class="NodeDeckClient.SessionPage" Title="{x:Static strings:AppResources.Connection}">
-    <Grid Padding="20">
-        <VerticalStackLayout x:Name="ConnectionPanel" Spacing="14" VerticalOptions="Center">
+    <Grid>
+        <VerticalStackLayout x:Name="ConnectionPanel" Margin="20" Spacing="14" VerticalOptions="Center">
             <Label x:Name="ConnectionTitle" FontSize="24" FontAttributes="Bold" />
             <Label x:Name="ConnectionStatus" />
             <ActivityIndicator x:Name="Connecting" />
             <Button x:Name="RetryButton" Text="{x:Static strings:AppResources.Retry}" Clicked="OnRetryClicked" />
             <Button Text="{x:Static strings:AppResources.OtherConnections}" Clicked="OnChooseClicked" />
         </VerticalStackLayout>
-        <ScrollView x:Name="CommandsPanel" IsVisible="False">
-            <VerticalStackLayout Spacing="12">
-                <Label x:Name="GatewayName" FontSize="22" FontAttributes="Bold" />
-                <Entry x:Name="MessageEntry" Text="{x:Static strings:AppResources.DefaultMessage}" Placeholder="{x:Static strings:AppResources.CommandMessage}" />
-                <VerticalStackLayout x:Name="CommandButtons" Spacing="10" />
-                <Label x:Name="ResultLabel" LineBreakMode="WordWrap" />
-            </VerticalStackLayout>
-        </ScrollView>
+        <Grid x:Name="CommandsPanel" IsVisible="False" IsClippedToBounds="True" SizeChanged="OnCommandsPanelSizeChanged">
+            <Grid x:Name="CommandsContent">
+                <ScrollView Margin="24,20,24,24">
+                    <VerticalStackLayout Spacing="12">
+                        <Label x:Name="GatewayName" FontSize="22" FontAttributes="Bold" />
+                        <Entry x:Name="MessageEntry" Text="{x:Static strings:AppResources.DefaultMessage}" Placeholder="{x:Static strings:AppResources.CommandMessage}" />
+                        <VerticalStackLayout x:Name="CommandButtons" Spacing="10" />
+                        <Label x:Name="ResultLabel" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </ScrollView>
+                <BoxView Color="Transparent" HorizontalOptions="Start" WidthRequest="24" Margin="0,0,0,24">
+                    <BoxView.GestureRecognizers>
+                        <SwipeGestureRecognizer Direction="Right" Threshold="24" Swiped="OnOpenPanelSwiped" />
+                    </BoxView.GestureRecognizers>
+                </BoxView>
+                <BoxView Color="Transparent" HorizontalOptions="End" WidthRequest="24" Margin="0,0,0,24">
+                    <BoxView.GestureRecognizers>
+                        <SwipeGestureRecognizer Direction="Left" Threshold="24" Swiped="OnOpenPanelSwiped" />
+                    </BoxView.GestureRecognizers>
+                </BoxView>
+                <BoxView Color="Transparent" VerticalOptions="End" HeightRequest="24">
+                    <BoxView.GestureRecognizers>
+                        <SwipeGestureRecognizer Direction="Up" Threshold="24" Swiped="OnOpenPanelSwiped" />
+                    </BoxView.GestureRecognizers>
+                </BoxView>
+            </Grid>
+            <BoxView x:Name="PanelBackdrop" Color="Black" Opacity="0" IsVisible="False">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnClosePanel" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+            <Border x:Name="SlidePanel" IsVisible="False" Padding="20" StrokeThickness="0"
+                    BackgroundColor="{AppThemeBinding Light=#F7F4FF, Dark=#241E30}">
+                <Border.GestureRecognizers>
+                    <SwipeGestureRecognizer Direction="Left" Swiped="OnPanelSwiped" />
+                    <SwipeGestureRecognizer Direction="Right" Swiped="OnPanelSwiped" />
+                    <SwipeGestureRecognizer Direction="Down" Swiped="OnPanelSwiped" />
+                </Border.GestureRecognizers>
+                <Grid RowDefinitions="Auto,*">
+                    <Button Text="&#x00D7;" Clicked="OnClosePanel" HorizontalOptions="End" Padding="0" WidthRequest="44" HeightRequest="44"
+                            BackgroundColor="Transparent" TextColor="{AppThemeBinding Light=#6550A3, Dark=#BBA9F8}" FontSize="26"
+                            SemanticProperties.Description="{x:Static strings:AppResources.ClosePanel}" />
+                    <Label x:Name="SlidePanelText" Grid.Row="1" FontSize="22" FontAttributes="Bold"
+                           HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </ContentPage>
