@@ -9,7 +9,7 @@ namespace NodeDeck.Console;
 
 internal static class DemoCommands
 {
-    public static void Register(GatewayBuilder builder)
+    public static void Register(GatewayCommandRegistry commands)
     {
         var parameters = new ValueDescriptor
         {
@@ -39,7 +39,7 @@ internal static class DemoCommands
             ("phone.action", "Run action")
         })
         {
-            builder.AddCommand(new GatewayCommand(id, title, "Demo command invoked from the phone",
+            commands.Add(new GatewayCommand(id, title, "Demo command invoked from the phone",
                 parameters, resultDescriptor,
                 (arguments, _) =>
                 {
@@ -49,7 +49,7 @@ internal static class DemoCommands
                 }));
         }
 
-        builder.AddCommand(new GatewayCommand("key.action", "Open explorer", "Command to generate keyboard event",
+        commands.Add(new GatewayCommand("key.action", "Open explorer", "Command to generate keyboard event",
             parameters, resultDescriptor,
             (arguments, _) =>
             {

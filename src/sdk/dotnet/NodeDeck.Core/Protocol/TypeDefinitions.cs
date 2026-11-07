@@ -31,6 +31,8 @@ public static class BleProtocolConstants
 
 public static class RequestType
 {
+    // Gateway-to-client request; not part of the client-to-gateway RequestTypes set.
+    public const string SessionPing = "session.ping";
     public const string ProtocolHello = "protocol.hello";
     public const string AuthLogin = "auth.login";
     public const string AuthLogout = "auth.logout";
@@ -42,6 +44,9 @@ public static class RequestType
 
 public static class ProtocolErrorCode
 {
+    public const string RouteLoop = "route_loop";
+    public const string RouteHopLimit = "route_hop_limit";
+    public const string GatewayUnavailable = "gateway_unavailable";
     public const string InvalidRequest = "invalid_request";
     public const string InvalidResponse = "invalid_response";
     public const string UnsupportedVersion = "unsupported_version";
@@ -198,7 +203,8 @@ public sealed record ProtocolRequest(
     string RequestId,
     string Type,
     JsonElement Payload,
-    string? AccessToken = null);
+    string? AccessToken = null,
+    GatewayRoute? Route = null);
 
 public sealed record ProtocolResponse(
     string ProtocolVersion,
@@ -223,7 +229,7 @@ public sealed record LogoutResult(bool Revoked);
 public sealed record CommandInvokePayload(string CommandId, JsonElement Arguments, string? UiRevision = null);
 public sealed record AcceptedCommandResult(string Status, string OperationToken, int PollAfterMs);
 public sealed record CommandExecutionResult(string Status, JsonElement? Output = null, ProtocolError? Error = null,
-    string? OperationToken = null, int? PollAfterMs = null);
+    string? OperationToken = null, int? PollAfterMs = null, bool? RefreshCapabilities = null);
 public sealed record OperationGetPayload(string OperationToken);
 public sealed record OperationProgress(double Value, string? Message = null);
 public sealed record OperationResult(string OperationToken, string Status, JsonElement? Output = null,
@@ -251,7 +257,7 @@ public sealed record ValueDescriptor
 public sealed record CommandAvailability(bool Enabled, string? Reason = null);
 public sealed record CommandDefinition(string Id, string Title, string? Description, ValueDescriptor Parameters,
     ValueDescriptor Result, CommandAvailability Availability);
-public sealed record GatewayInfo(string Id, string Name, string? Description = null);
+public sealed record GatewayInfo(string Id, string Name, string? Description = null, string Kind = "executor");
 public sealed record ProtocolLimits(int MaxMessageBytes, int CommandResponseTimeoutMs, int MinPollIntervalMs,
     long OperationRetentionMs, long DeduplicationWindowMs, bool DeduplicationPersistent)
 {

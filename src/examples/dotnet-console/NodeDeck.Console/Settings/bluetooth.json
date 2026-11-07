@@ -1,4 +1,7 @@
 {
   "Type": "bluetooth",
-  "ScanningMode": "Active"
+  "ScanningMode": "Active",
+  "ServiceUuid": "a1b2c3d4-e5f6-4a1b-8c9d-001122334455",
+  "ClientToGatewayCharacteristicUuid": "a1b2c3d4-e5f6-4a1b-8c9d-001122334456",
+  "GatewayToClientCharacteristicUuid": "a1b2c3d4-e5f6-4a1b-8c9d-001122334457"
 }

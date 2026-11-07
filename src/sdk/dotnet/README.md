@@ -192,3 +192,36 @@ need `.resx` translations, forward each property to a distinct underlying resour
 key (for example `UpperProjectIssuesName` and `LowerProjectIssuesName`). This keeps
 `ProjectCommands` and `projectCommands` independent without losing strings during
 resource compilation.
+
+## Device sessions
+
+Pass a persisted installation ID as `clientId` to `NodeDeckClientConnection.ConnectAsync` for every transport. If omitted, the SDK generates a new ID for that connection. Android persists one ID across its profiles. Optionally pass `expectedGatewayId` to check hello before sending the secret.
+
+`gateway.ActiveSessions` returns immutable snapshots with device identity, subject, transport and timestamps, excluding bearer tokens. Call `gateway.EndSession(sessionId)` to revoke a session; the next authenticated request on that connection receives `unauthorized`. A new login from the same device atomically replaces the previous session. Disconnect and logout remove it as well.
+
+`GatewayBuilder.WithSessions(new GatewaySessionOptions { ... })` configures the ping interval (default one minute), inactivity timeout (five minutes), and active-user log interval (one minute). The timeout must exceed the ping interval. The client answers gateway pings in its receive loop while commands execute. `client.Disconnected` completes when the receive loop terminates; disposing a client attempts logout and releases the transport. Never automatically replay an interrupted command.
+
+## Gateway factory and routing nodes
+
+`GatewayFactory.CreateAsync` returns `IGateway` for either `GatewayMode.Executor` (`GatewayServer`) or `GatewayMode.Node` (`GatewayNode`). The host uses the same lifecycle and metadata API without casting to an implementation:
+
+```csharp
+var transports = new ProtocolMessageListenerFactory()
+    .Register<TcpListenerSettings>(settings => new TcpJsonServer(settings));
+var factory = new GatewayFactory(transports);
+var settings = factory.LoadSettings("gateway.json");
+await using IGateway gateway = await factory.CreateAsync(settings,
+    settings.Mode == GatewayMode.Executor ? commands => commands.Add(command) : null);
+gateway.UpdateMetadata("Warehouse workstation", "Dispatch and inventory commands");
+gateway.Start();
+await gateway.Ready;
+await gateway.RunAsync(cancellationToken);
+```
+
+`GatewaySettings` contains the role, stable ID, default name/description, shared secret, listener settings, session settings and (for a node) peer settings. Embedded `Listeners` use the same transport registration as standalone listener JSON. Register Windows BLE in the host when needed. The legacy `GatewayBuilder` remains a convenience for code that constructs a command executor directly; new configuration-driven hosts use the common factory.
+
+The optional registry callback is for executor commands only. Register attributed commands there with `new CommandResolver(commands)`. A node owns its connection commands and rejects a local command-registration callback.
+
+`IGateway.ConnectedGateways` returns authenticated peer snapshots (empty for executors). A node periodically probes configured peers and exposes their current metadata and availability in its directory. Each phone chooses its own peer; subsequent application requests are forwarded to that peer with the original request ID and device identity. An executor runs the command locally. Nodes can nest, but visited IDs and a maximum of 16 forwards prevent cycles and backward routing. An unavailable peer produces an error instead of automatic failover or command replay. Revoking the phone's session also releases its selected downstream connection.
+
+`CommandExecutionResult.RefreshCapabilities` tells clients to reload their catalog after selection, return or a route failure. Android implements this flow and displays gateway and connection-command descriptions. See [transport setup](../../protocol/tcp-development.md) for complete JSON examples and [wire protocol](../../protocol/wire.md) for routing fields and errors.

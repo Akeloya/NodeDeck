@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NodeDeck.Core\NodeDeck.Core.csproj" />
     <ProjectReference Include="..\NodeDeck.Transport.Tcp\NodeDeck.Transport.Tcp.csproj" />
+    <ProjectReference Include="..\NodeDeck.Client\NodeDeck.Client.csproj" />
   </ItemGroup>
 
 </Project>

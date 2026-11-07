@@ -17,7 +17,7 @@ A message is a UTF-8 JSON object. For each valid request message, the gateway re
 }
 ```
 
-`requestId` is a nonempty string of up to 128 characters, unique for each new attempt within the authenticated subject's scope. A random UUID is recommended. `payload` is required, including when it is `{}`. `accessToken` is omitted only before authentication. Each new status query uses a new `requestId`; retrying a command whose response was lost uses the original identifier.
+`requestId` is a nonempty string of up to 128 characters, unique for each new attempt within the authenticated subject/device scope. A random UUID is recommended. `payload` is required, including when it is `{}`. `accessToken` is omitted before authentication and on gateway-originated heartbeat requests. Each new status query uses a new `requestId`; retrying a command whose response was lost uses the original identifier.
 
 A response contains exactly one of `result` or `error`; `payload` and `accessToken` are absent:
 
@@ -60,11 +60,55 @@ Unknown optional fields are ignored. Unknown request types return `unsupported_t
 
 The result contains `selectedVersion`, `gatewayId`, `authMethods: ["sharedSecret"]`, and `maxMessageBytes`. The gateway selects a common version or returns `unsupported_version`. Only `hello` is allowed before `hello` completes. Until the limit is received, the maximum message size is 16384 bytes; afterwards, the advertised limit applies to the entire UTF-8 envelope in both directions. A large catalog requires a larger advertised limit; pagination is not defined in 0.1.
 
-`auth.login` accepts `{ "method": "sharedSecret", "secret": "..." }`. The result contains `accessToken`, `expiresAt`, and `subjectId`. The token is an unpredictable opaque secret, valid until the specified time or revocation. Reconnection requires `hello`, after which an unexpired token may be reused. Expiration requires logging in again; 0.1 has no refresh mechanism. `auth.logout` with an empty payload revokes the current token and returns `{ "revoked": true }`.
+`auth.login` accepts `{ "method": "sharedSecret", "secret": "..." }`. The result contains `accessToken`, `expiresAt`, and `subjectId`. The token is an unpredictable opaque secret, valid until the specified time or revocation. Tokens are bound to the connection that authenticated them. Reconnection requires a fresh `hello` and `auth.login`; tokens cannot be reused on another connection. Expiration requires logging in again; 0.1 has no refresh mechanism. `auth.logout` with an empty payload revokes the current token and returns `{ "revoked": true }`, then closes the transport, including BLE GATT resources.
 
 A minimal implementation may store a preconfigured password, including in firmware. There must be no shared default password for all gateways. Secrets and tokens may only be transmitted over a secure, authenticated channel. Tokens and secrets are not included in logs, UI schemas, or URLs. The gateway rate-limits login attempts, returning `rate_limited` with `retryAfterMs`.
 
 `client.id` is metadata, not proof of identity. `subjectId` is determined by credentials on the gateway. A shared password implies shared permissions and a shared operation scope; individual device identification requires an authentication extension. The gateway checks permissions when retrieving the catalog, invoking commands, and reading any operation or resource. Hiding a button does not replace access checks. Revoking a session does not by itself cancel commands already started.
+
+### Device sessions and heartbeat
+
+The client persists a unique installation ID in `client.id` (1–128 characters) and uses it across BLE and TCP profiles. `client.name` is a display name (1–256 characters). A successful login replaces the previous session for the same device; failed authentication never evicts a session. Different devices can remain connected concurrently. An installation ID groups sessions but is not a security credential: clients sharing the gateway password can claim the same ID.
+
+The gateway sends a request once a minute on each authenticated connection:
+
+```json
+{"protocolVersion":"0.1","requestId":"ping-unique-id","type":"session.ping","payload":{}}
+```
+
+The client responds on the same connection, even while a command is running:
+
+```json
+{"protocolVersion":"0.1","requestId":"ping-unique-id","type":"session.ping","result":{}}
+```
+
+Neither frame carries an access token. Only a successful response matching the outstanding ping ID, type and version counts as a heartbeat. Until a response arrives, retries reuse that ping ID. The gateway ends the session after five minutes without a valid pong (measured from login until the first pong), or at token expiration. Late pongs cannot revive it. This clock is independent of command execution and command traffic.
+
+Logout, transport disconnect, server revocation, and a new login from the same device also end the session. Requests using an ended session on a still-open transport receive `error.code = unauthorized`; the phone shows “Not authorized” and requires reconnection. Commands already started are not replayed automatically. An ended session may leave a transport open to deliver that error, but no longer appears among active users or receives pings.
+
+The gateway logs an active-session snapshot once a minute, including an empty snapshot when no users are active: session ID (not the bearer token), subject, device ID/name, transport and timestamps. Upgrade both gateway and phone for this heartbeat contract; earlier clients that do not answer `session.ping` will expire.
+
+### Gateway nodes and routing
+
+A gateway has a globally unique stable ID, a name, a description and a `kind` (`executor` or `node`) in `capabilities.gateway`. An executor exposes and runs its commands. A node maintains authenticated connections to the peers configured in its `Gateways` settings and periodically refreshes their availability, name and description. These peers can be executors or other nodes. Peers initiate no registration; the node connects to their configured TCP endpoints. Names and descriptions may change at runtime without changing IDs.
+
+After authenticating to a node, `capabilities.get` returns connection commands, one per configured peer. Their titles and descriptions identify the peer; unavailable peers remain visible with `availability.enabled = false`. Each command has empty arguments. IDs use `gateway.connect.<hex-node-id>.<hex-peer-id>`, where IDs are uppercase hexadecimal UTF-8. These prefixes and `gateway.disconnect.<hex-node-id>` are reserved for directory navigation.
+
+A successful connection command returns `result.status = completed`, `output = { "gatewayId": "...", "connected": true }`, and `refreshCapabilities = true`. The client then reloads capabilities and UI. The selected peer's commands and metadata become visible, along with a command to return to the node directory. Disconnecting returns the same shape with `connected = false`. Selection is independent for every authenticated phone session. A chain of nodes retains a return command for each enclosing directory.
+
+The node authenticates the phone locally using its own shared secret, and authenticates to the selected peer using that peer's configured secret. The original `client.id` and command `requestId` are preserved; bearer tokens are never copied between hops. Thus direct and routed connections from the same phone replace each other at the executor. Heartbeat runs on each connection separately. Revocation, logout, expiration or disconnect of a phone's node session also closes its selected downstream session. Directory monitors have separate installation IDs and never evict phone sessions.
+
+Every forwarded application request carries an optional envelope field:
+
+```json
+"route": { "visitedGatewayIds": ["office-node", "floor-node"], "remainingHops": 14 }
+```
+
+A direct request starts with an empty history and a budget of 16 forwarding hops. Each node appends its ID and decrements the budget before forwarding. It rejects a target already present in the history, including itself, with `route_loop`, and refuses another forward at budget zero with `route_hop_limit`. Every recipient, including an executor, checks the history before dispatch. The handshake for a selected downstream connection carries the same history, preventing backward login from evicting an existing session. Responses follow the established connection and are not new forwarded commands.
+
+The node forwards only to the explicitly selected peer; it never broadcasts, searches for another executor, sends the command back, or automatically replays it after failure. A lost connection or route timeout returns `gateway_unavailable` (command result `failed`, with `refreshCapabilities = true`); the execution outcome may be unknown. The cached selected catalog then disables business commands but preserves the directory return command. An unavailable connection attempt returns `rejected / gateway_unavailable`. Recovery requires an explicit new connection command. Directory health checks may reconnect independently, but never resend user commands.
+
+The UI revision of a downstream schema is preserved for command validation. A node adds its navigation command to capabilities and computes a corresponding capabilities revision. Names and descriptions participate in catalog revision changes.
 
 ## 3. Capabilities
 
@@ -139,7 +183,7 @@ Between requests, the client waits at least the greater of `pollAfterMs` and `li
 
 ### Retries and lost responses
 
-The gateway atomically reserves the `(subjectId, requestId)` key before any side effects of `command.invoke`. A retry with the same payload content returns the original response, including the same token for `accepted`, without re-execution. Comparison is structural: object key order does not matter; array order and values do. The session token is excluded from comparison. A different payload with the same key returns `request_conflict`.
+The gateway atomically reserves the `(subjectId, client.id, requestId)` key before any side effects of `command.invoke`. A retry with the same payload content returns the original response, including the same token for `accepted`, without re-execution. Comparison is structural: object key order does not matter; array order and values do. The session token is excluded from comparison. A different payload with the same key returns `request_conflict`.
 
 The key is retained for at least `limits.deduplicationWindowMs` after the request is accepted and is not removed while the operation is active. The window limits the guarantee: automatic retries after it expires, or after a restart without a persistent journal, may be unsafe. `limits.deduplicationPersistent` indicates whether the journal survives restarts. A lost response means “outcome unknown”; the client does not generate a new `requestId` for an automatic retry. Once the window expires, the application domain state must be checked or the user must make an explicit decision.
 

@@ -136,5 +136,11 @@
   <data name="ClosePanel" xml:space="preserve">
     <value>Закрыть панель</value>
   </data>
+  <data name="BleServiceUuid" xml:space="preserve"><value>UUID сервиса BLE</value></data>
+  <data name="BleClientToGatewayUuid" xml:space="preserve"><value>UUID характеристики телефон → шлюз</value></data>
+  <data name="BleGatewayToClientUuid" xml:space="preserve"><value>UUID характеристики шлюз → телефон</value></data>
+  <data name="ExpectedGatewayId" xml:space="preserve"><value>Ожидаемый ID шлюза (необязательно)</value></data>
+  <data name="InvalidBleIdentifiers" xml:space="preserve"><value>Укажите три различных непустых UUID, совпадающих с настройками шлюза.</value></data>
+  <data name="SessionUnauthorized" xml:space="preserve"><value>Не авторизован. Сессия завершена. Подключитесь повторно.</value></data>
 </root>
 

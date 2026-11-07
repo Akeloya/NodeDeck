@@ -18,86 +18,68 @@ namespace NodeDeck.Console
 
         private static async Task<int> RunAsync(ConsoleOptions options)
         {
-            var factory = new ProtocolMessageListenerFactory()
+            var listeners = new ProtocolMessageListenerFactory()
                 .Register<TcpListenerSettings>(settings => new TcpJsonServer(settings))
                 .Register<BluetoothListenerSettings>(settings => new WindowsBleProtocolListener(settings));
-
-            var listeners = new List<IProtocolMessageListener>();
-            GatewayServer? gateway = null;
+            var factory = new GatewayFactory(listeners);
             try
             {
-                IListenerSettings[] settings = options.Settings.Any()
-                    ? options.Settings.Select(path => factory.LoadSettings(ResolveSettingsPath(path))).ToArray()
-                    : [ReadListenerSettings(options)];
-                if (options.SaveSettings is not null && settings.Length != 1)
-                    throw new ArgumentException("--save-settings requires a single listener configuration.");
-
-                foreach (var configuration in settings)
-                    listeners.Add(factory.Create(configuration));
-
-                if (options.SaveSettings is not null)
+                GatewaySettings settings;
+                if (options.GatewaySettings is not null)
                 {
-                    factory.SaveSettings(options.SaveSettings, settings[0]);
-                    return 0;
+                    settings = factory.LoadSettings(ResolveSettingsPath(options.GatewaySettings));
+                }
+                else
+                {
+                    var mode = options.Mode switch
+                    {
+                        "executor" => GatewayMode.Executor,
+                        "node" => GatewayMode.Node,
+                        _ => throw new ArgumentException("Mode must be 'executor' or 'node'.")
+                    };
+                    IListenerSettings[] transports = options.Settings.Any()
+                        ? options.Settings.Select(path => listeners.LoadSettings(ResolveSettingsPath(path))).ToArray()
+                        : [ReadListenerSettings(options)];
+                    if (options.SaveSettings is not null)
+                    {
+                        if (transports.Length != 1)
+                            throw new ArgumentException("--save-settings requires a single listener configuration.");
+                        listeners.SaveSettings(options.SaveSettings, transports[0]);
+                        return 0;
+                    }
+                    settings = new GatewaySettings
+                    {
+                        Mode = mode, GatewayId = options.GatewayId, Name = options.GatewayName,
+                        Description = options.GatewayDescription, SharedSecret = options.Secret,
+                        Listeners = transports.Select(listeners.SerializeSettings).ToArray()
+                    };
                 }
 
-                var builder = new GatewayBuilder("console-demo", "NodeDeck Console Demo", options.Secret);
-                DemoCommands.Register(builder);
-                gateway = builder.BuildWithListeners(listeners);
-                var projectCommands = new ProjectCommands(new CommandResolver(gateway.Commands));
-                projectCommands.Init();
-            }
-            catch (Exception ex) when (ex is JsonException or IOException or ArgumentException or UnauthorizedAccessException)
-            {
-                if (gateway is not null)
-                    await gateway.DisposeAsync();
-                System.Console.Error.WriteLine(ex.Message);
-                return 2;
-            }
-            finally
-            {
-                if (gateway is null)
-                    foreach (var listener in listeners)
-                        await listener.DisposeAsync();
-            }
-
-            if (options.Secret == "nodedeck-dev")
-                System.Console.WriteLine("Using development secret 'nodedeck-dev'. Set --secret to change it.");
-
-            await using (gateway.ConfigureAwait(false))
-            {
-                gateway.ClientLoggedOut += () => System.Console.WriteLine("Client logged out. Session ended.");
-                using var shutdown = new CancellationTokenSource();
-                System.Console.CancelKeyPress += (_, e) =>
+                await using IGateway gateway = await factory.CreateAsync(settings, settings.Mode == GatewayMode.Executor ? commands =>
                 {
-                    e.Cancel = true;
-                    shutdown.Cancel();
-                };
-
+                    DemoCommands.Register(commands);
+                    new ProjectCommands(new CommandResolver(commands)).Init();
+                } : null);
+                using var shutdown = new CancellationTokenSource();
+                ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; shutdown.Cancel(); };
+                System.Console.CancelKeyPress += cancel;
                 try
                 {
                     gateway.Start();
-                    await Task.WhenAll(listeners.Select(listener => listener.Ready)).WaitAsync(shutdown.Token);
-                }
-                catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
-                {
-                    return 0;
-                }
-                catch (Exception ex)
-                {
-                    System.Console.Error.WriteLine($"Listener startup failed: {ex.GetBaseException().Message}");
-                    return 1;
-                }
-                System.Console.WriteLine("Press Ctrl+C to stop.");
-
-                try
-                {
+                    await gateway.Ready.WaitAsync(shutdown.Token);
+                    System.Console.WriteLine($"{gateway.Info.Kind}: {gateway.Info.Name} ({gateway.Info.Id}). {gateway.Info.Description}");
+                    System.Console.WriteLine("Press Ctrl+C to stop.");
                     await gateway.RunAsync(shutdown.Token);
                 }
-                catch (OperationCanceledException) { /* Ctrl+C requests a graceful shutdown. */ }
+                catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { }
+                finally { System.Console.CancelKeyPress -= cancel; }
+                return 0;
             }
-
-            return 0;
+            catch (Exception ex)
+            {
+                System.Console.Error.WriteLine(ex.Message);
+                return 2;
+            }
         }
 
         private static string ResolveSettingsPath(string path)

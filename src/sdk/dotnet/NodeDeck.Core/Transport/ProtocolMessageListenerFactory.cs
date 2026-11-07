@@ -32,7 +32,14 @@ public sealed class ProtocolMessageListenerFactory
     {
         using var stream = File.OpenRead(path);
         using var document = JsonDocument.Parse(stream, new JsonDocumentOptions { AllowDuplicateProperties = false });
-        var root = document.RootElement;
+        return ReadSettings(document.RootElement);
+    }
+
+    public JsonElement SerializeSettings(IListenerSettings settings) =>
+        JsonSerializer.SerializeToElement(settings, Resolve(settings).SettingsType, Json);
+
+    public IListenerSettings ReadSettings(JsonElement root)
+    {
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(nameof(IListenerSettings.Type), out var type)
             || type.ValueKind != JsonValueKind.String)
             throw new JsonException("Listener settings must contain a string Type.");

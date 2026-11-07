@@ -16,6 +16,7 @@ public partial class SessionPage : ContentPage
     private CancellationTokenSource? _attempt;
     private CancellationTokenSource? _connected;
     private NodeDeckClientConnection? _client;
+    private bool _authorizationLost;
     private Task _command = Task.CompletedTask;
     private enum PanelSide { Left, Right, Bottom }
     private PanelSide? _openPanel;
@@ -194,6 +195,7 @@ public partial class SessionPage : ContentPage
     private async Task RunSessionAsync(CancellationToken lifetime)
     {
         var reconnecting = false;
+        _authorizationLost = false;
         ShowConnection(_profile.DisplayName, _profile.IsTcp ? AppResources.ConnectingToGateway : AppResources.WaitingForBluetoothGateway, true);
         while (!lifetime.IsCancellationRequested)
         {
@@ -203,8 +205,7 @@ public partial class SessionPage : ContentPage
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
                 timeout.CancelAfter(TimeSpan.FromSeconds(_profile.IsTcp ? 15 : 150));
-                var connection = await ConnectAsync(timeout.Token);
-                await using var client = connection.Client;
+                await using var client = await ConnectAsync(timeout.Token);
                 var catalog = (await client.GetCapabilitiesAsync(timeout.Token))
                     .Deserialize<CapabilitiesDocument>(ProtocolJson.Options)
                     ?? throw new InvalidResponseException(AppResources.MissingCommandList);
@@ -218,20 +219,8 @@ public partial class SessionPage : ContentPage
                 wasConnected = true;
                 try
                 {
-                    if (connection.Disconnected is { } disconnected)
-                    {
-                        await disconnected.WaitAsync(active.Token);
-                        throw new IOException(AppResources.GatewayDisconnected);
-                    }
-                    while (true)
-                    {
-                        await Task.Delay(TimeSpan.FromSeconds(6), active.Token);
-                        if (!_command.IsCompleted)
-                            continue;
-                        using var probe = CancellationTokenSource.CreateLinkedTokenSource(active.Token);
-                        probe.CancelAfter(TimeSpan.FromSeconds(10));
-                        await client.GetCapabilitiesAsync(probe.Token);
-                    }
+                    await client.Disconnected.WaitAsync(active.Token);
+                    throw new IOException(AppResources.GatewayDisconnected);
                 }
                 finally
                 {
@@ -247,6 +236,11 @@ public partial class SessionPage : ContentPage
             }
             catch (Exception ex)
             {
+                if (_authorizationLost || ex is GatewayRequestException { Code: ProtocolErrorCode.Unauthorized })
+                {
+                    ShowConnection(AppResources.ConnectionFailed, AppResources.SessionUnauthorized, false);
+                    return;
+                }
                 if (!wasConnected)
                 {
                     var reason = ex is OperationCanceledException ? AppResources.GatewayTimeout : ex.Message;
@@ -259,15 +253,15 @@ public partial class SessionPage : ContentPage
         }
     }
 
-    private async Task<(NodeDeckClientConnection Client, Task? Disconnected)> ConnectAsync(CancellationToken token)
+    private async Task<NodeDeckClientConnection> ConnectAsync(CancellationToken token)
     {
         var secret = await SecureStorage.Default.GetAsync(_profile.SecretKey) ?? "nodedeck-dev";
         if (_profile.IsTcp)
-            return (await NodeDeckClientConnection.ConnectAsync(_profile.Host!, _profile.Port, secret,
-                "android-phone", "NodeDeck Android", token), null);
+            return await NodeDeckClientConnection.ConnectAsync(_profile.Host!, _profile.Port, secret,
+                ConnectionProfile.DeviceId, "NodeDeck Android", token, _profile.ExpectedGatewayId);
 #if ANDROID
-        var ble = await AndroidBleProtocolConnection.ConnectAsync(token);
-        return (await NodeDeckClientConnection.ConnectAsync(ble, secret, "android-phone", "NodeDeck Android", token), ble.Disconnected);
+        var ble = await AndroidBleProtocolConnection.ConnectAsync(_profile.BleIdentifiers, token);
+        return await NodeDeckClientConnection.ConnectAsync(ble, secret, ConnectionProfile.DeviceId, "NodeDeck Android", token, _profile.ExpectedGatewayId);
 #else
         throw new PlatformNotSupportedException(AppResources.BluetoothAndroidOnly);
 #endif
@@ -279,6 +273,8 @@ public partial class SessionPage : ContentPage
         ConnectionPanel.IsVisible = Connecting.IsRunning = false;
         CommandsPanel.IsVisible = true;
         GatewayName.Text = catalog.Gateway.Name;
+        GatewayDescription.Text = catalog.Gateway.Description;
+        GatewayDescription.IsVisible = !string.IsNullOrWhiteSpace(catalog.Gateway.Description);
         ResultLabel.Text = catalog.Commands.Count == 0 ? AppResources.NoCommands : "";
         CommandButtons.Children.Clear();
         MessageEntry.IsVisible = catalog.Commands.Any(UsesMessage);
@@ -287,6 +283,8 @@ public partial class SessionPage : ContentPage
             var button = new Button { Text = command.Title, IsEnabled = command.Availability.Enabled };
             button.Clicked += (_, _) => OnCommandClicked(command);
             CommandButtons.Children.Add(button);
+            if (!string.IsNullOrWhiteSpace(command.Description))
+                CommandButtons.Children.Add(new Label { Text = command.Description, FontSize = 13, Opacity = 0.8 });
             if (!command.Availability.Enabled && command.Availability.Reason is { } reason)
                 CommandButtons.Children.Add(new Label { Text = reason });
         }
@@ -347,11 +345,25 @@ public partial class SessionPage : ContentPage
         {
             var response = await client.InvokeAsync(id, arguments, cancellationToken: timeout.Token);
             var execution = response.Deserialize<CommandExecutionResult>(ProtocolJson.Options);
+            if (execution?.RefreshCapabilities == true)
+            {
+                var catalog = (await client.GetCapabilitiesAsync(timeout.Token)).Deserialize<CapabilitiesDocument>(ProtocolJson.Options)
+                    ?? throw new InvalidResponseException(AppResources.MissingCommandList);
+                ProtocolValidator.ValidateCapabilities(catalog);
+                ShowCommands(catalog);
+                ResultLabel.Text = execution.Error?.Message ?? "";
+                return;
+            }
             ResultLabel.Text = execution?.Error?.Message ?? (execution?.Output is { ValueKind: JsonValueKind.Object } output
                 && output.TryGetProperty("reply", out var reply) && reply.ValueKind == JsonValueKind.String
                 ? reply.GetString() : response.ToString());
         }
-        catch (GatewayRequestException ex) when (ex.Code != ProtocolErrorCode.Unauthorized)
+        catch (GatewayRequestException ex) when (ex.Code == ProtocolErrorCode.Unauthorized)
+        {
+            _authorizationLost = true;
+            active.Cancel();
+        }
+        catch (GatewayRequestException ex)
         {
             ResultLabel.Text = ex.Message;
         }

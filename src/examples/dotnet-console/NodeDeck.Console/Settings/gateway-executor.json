@@ -1,0 +1,10 @@
+{
+  "Mode": "Executor",
+  "GatewayId": "workstation-1",
+  "Name": "Workstation 1",
+  "Description": "Commands executed on the first workstation",
+  "SharedSecret": "nodedeck-dev",
+  "Listeners": [
+    { "Type": "tcp", "IPAddress": "127.0.0.1", "Port": 5051 }
+  ]
+}

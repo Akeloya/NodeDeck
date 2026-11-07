@@ -136,5 +136,11 @@
   <data name="ClosePanel" xml:space="preserve">
     <value>Close panel</value>
   </data>
+  <data name="BleServiceUuid" xml:space="preserve"><value>BLE service UUID</value></data>
+  <data name="BleClientToGatewayUuid" xml:space="preserve"><value>Phone → gateway characteristic UUID</value></data>
+  <data name="BleGatewayToClientUuid" xml:space="preserve"><value>Gateway → phone characteristic UUID</value></data>
+  <data name="ExpectedGatewayId" xml:space="preserve"><value>Expected gateway ID (optional)</value></data>
+  <data name="InvalidBleIdentifiers" xml:space="preserve"><value>Enter three distinct, non-empty UUIDs matching the gateway settings.</value></data>
+  <data name="SessionUnauthorized" xml:space="preserve"><value>Not authorized. The session has ended. Connect again.</value></data>
 </root>
 

@@ -13,6 +13,13 @@ public static class AppResources
         ResourceManager.GetString(name, CultureInfo.CurrentUICulture)
         ?? throw new MissingManifestResourceException($"Missing UI resource: {name}");
 
+    public static string BleServiceUuid => GetString(nameof(BleServiceUuid));
+    public static string BleClientToGatewayUuid => GetString(nameof(BleClientToGatewayUuid));
+    public static string BleGatewayToClientUuid => GetString(nameof(BleGatewayToClientUuid));
+    public static string ExpectedGatewayId => GetString(nameof(ExpectedGatewayId));
+    public static string InvalidBleIdentifiers => GetString(nameof(InvalidBleIdentifiers));
+    public static string SessionUnauthorized => GetString(nameof(SessionUnauthorized));
+
     public static string Connections => GetString(nameof(Connections));
     public static string ScanQrCode => GetString(nameof(ScanQrCode));
     public static string SavedConnections => GetString(nameof(SavedConnections));

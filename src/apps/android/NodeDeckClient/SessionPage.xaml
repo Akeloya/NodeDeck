@@ -16,6 +16,7 @@
                 <ScrollView Margin="24,20,24,24">
                     <VerticalStackLayout Spacing="12">
                         <Label x:Name="GatewayName" FontSize="22" FontAttributes="Bold" />
+                        <Label x:Name="GatewayDescription" FontSize="14" IsVisible="False" />
                         <Entry x:Name="MessageEntry" Text="{x:Static strings:AppResources.DefaultMessage}" Placeholder="{x:Static strings:AppResources.CommandMessage}" />
                         <VerticalStackLayout x:Name="CommandButtons" Spacing="10" />
                         <Label x:Name="ResultLabel" LineBreakMode="WordWrap" />

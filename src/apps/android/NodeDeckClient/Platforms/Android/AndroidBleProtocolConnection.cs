@@ -47,8 +47,9 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         _maxMessageBytes = maxMessageBytes;
     }
 
-    public static async Task<AndroidBleProtocolConnection> ConnectAsync(CancellationToken cancellationToken = default)
+    public static async Task<AndroidBleProtocolConnection> ConnectAsync(BleServiceIdentifiers identifiers, CancellationToken cancellationToken = default)
     {
+        identifiers.Validate();
         var activity = Platform.CurrentActivity ?? throw new InvalidOperationException("Android activity is unavailable.");
         await AndroidBlePermissions.RequestAsync(activity, cancellationToken);
         var manager = (BluetoothManager?)activity.GetSystemService(Context.BluetoothService)
@@ -66,14 +67,14 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         try
         {
             callback.Connection = connection;
-            var service = new BluetoothGattService(UUID.FromString(BleProtocolConstants.ServiceUuid), GattServiceType.Primary);
+            var service = new BluetoothGattService(UUID.FromString(identifiers.ServiceUuid.ToString()), GattServiceType.Primary);
             Diagnostic?.Invoke("Opening GATT server and registering NodeDeck service…");
 
-            var tx = new BluetoothGattCharacteristic(UUID.FromString(BleProtocolConstants.ClientToGatewayCharacteristicUuid),
+            var tx = new BluetoothGattCharacteristic(UUID.FromString(identifiers.ClientToGatewayCharacteristicUuid.ToString()),
                 GattProperty.Notify, GattPermission.Read);
             tx.AddDescriptor(new BluetoothGattDescriptor(UUID.FromString(BleProtocolConstants.ClientConfigurationDescriptorUuid),
                 GattDescriptorPermission.Read | GattDescriptorPermission.Write));
-            var rx = new BluetoothGattCharacteristic(UUID.FromString(BleProtocolConstants.GatewayToClientCharacteristicUuid),
+            var rx = new BluetoothGattCharacteristic(UUID.FromString(identifiers.GatewayToClientCharacteristicUuid.ToString()),
                 GattProperty.Write, GattPermission.Write);
             service.AddCharacteristic(tx);
             service.AddCharacteristic(rx);
@@ -90,7 +91,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
                 // advertisement payload bytes. Do not include the device name here:
                 // Android rejects the packet with ADVERTISE_FAILED_DATA_TOO_LARGE.
                 .SetIncludeDeviceName(false)!
-                .AddServiceUuid(new ParcelUuid(UUID.FromString(BleProtocolConstants.ServiceUuid)))!
+                .AddServiceUuid(new ParcelUuid(UUID.FromString(identifiers.ServiceUuid.ToString())))!
                 .Build()!;
             var settings = new AdvertiseSettings.Builder()!
                 .SetAdvertiseMode(AdvertiseMode.LowLatency)!
@@ -103,6 +104,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
             Diagnostic?.Invoke("BLE advertising started; waiting for computer to connect…");
             setupStage = "waiting for the computer to connect and enable BLE notifications (120 seconds). Check the computer's BLE scan log";
             await callback.Connected.Task.WaitAsync(TimeSpan.FromSeconds(WaitForGatewaySeconds), cancellationToken);
+            advertiser.StopAdvertising(connection._advertiseCallback);
             Diagnostic?.Invoke("BLE notifications enabled. Connecting to gateway…");
             return connection;
         }
@@ -172,6 +174,8 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
 
     public async Task<T?> ReceiveAsync<T>(CancellationToken cancellationToken = default)
     {
+        if (!await _incoming.Reader.WaitToReadAsync(cancellationToken))
+            return default;
         var bytes = await _incoming.Reader.ReadAsync(cancellationToken);
         return ProtocolJson.Deserialize<T>(bytes, _maxMessageBytes);
     }
@@ -224,8 +228,14 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         _callback.Connection = null;
         _incoming.Writer.TryComplete();
         _advertiser.StopAdvertising(_advertiseCallback);
-        _server.Close();
-        _notifyLock.Dispose();
+        try
+        {
+            if (_callback.Central is { } central)
+                _server.CancelConnection(central);
+            _server.ClearServices();
+        }
+        finally { _server.Close(); }
+        _callback.Disconnected.TrySetResult();
         return ValueTask.CompletedTask;
     }
 
@@ -268,6 +278,12 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         public override void OnConnectionStateChange(BluetoothDevice? device, ProfileState status, ProfileState newState)
         {
             Diagnostic?.Invoke($"GATT connection callback: status={status}, state={newState}, device={device?.Address ?? "unknown"}.");
+            if (Central is not null && device?.Address != Central.Address)
+            {
+                if (newState == ProfileState.Connected && device is not null)
+                    Connection?._server.CancelConnection(device);
+                return;
+            }
             if ((int)status != 0 || newState == ProfileState.Disconnected)
             {
                 Central = null;
@@ -288,7 +304,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         public override void OnDescriptorWriteRequest(BluetoothDevice? device, int requestId, BluetoothGattDescriptor? descriptor,
             bool preparedWrite, bool responseNeeded, int offset, byte[]? value)
         {
-            if (device is null)
+            if (device is null || Central?.Address != device.Address)
                 return;
             var subscribed = !preparedWrite && offset == 0 && value is [1, 0]
                 && descriptor?.Characteristic?.Uuid?.Equals(Tx?.Uuid) == true;
@@ -304,7 +320,7 @@ internal sealed class AndroidBleProtocolConnection : IProtocolMessageConnection
         public override void OnCharacteristicWriteRequest(BluetoothDevice? device, int requestId, BluetoothGattCharacteristic? characteristic,
             bool preparedWrite, bool responseNeeded, int offset, byte[]? value)
         {
-            if (device is not null && characteristic?.Uuid == Rx?.Uuid && value is not null)
+            if (device is not null && Central?.Address == device.Address && !preparedWrite && offset == 0 && characteristic?.Uuid == Rx?.Uuid && value is not null)
             {
                 Central = device;
                 Connection?.AcceptWrite(value);

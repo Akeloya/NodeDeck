@@ -1,0 +1,22 @@
+{
+  "Mode": "Node",
+  "GatewayId": "office-node",
+  "Name": "Office gateways",
+  "Description": "Choose a workstation to connect to",
+  "SharedSecret": "nodedeck-dev",
+  "CatalogRefreshInterval": "00:00:30",
+  "RouteTimeout": "00:00:15",
+  "Listeners": [
+    { "Type": "tcp", "IPAddress": "0.0.0.0", "Port": 5050 }
+  ],
+  "Gateways": [
+    {
+      "GatewayId": "workstation-1",
+      "Name": "Workstation 1",
+      "Description": "Commands executed on the first workstation",
+      "Host": "127.0.0.1",
+      "Port": 5051,
+      "SharedSecret": "nodedeck-dev"
+    }
+  ]
+}

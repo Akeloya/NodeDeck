@@ -1,4 +1,5 @@
 using System.Globalization;
+using NodeDeck.Core.Protocol;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using NodeDeckClient.Resources.Strings;
@@ -7,6 +8,25 @@ namespace NodeDeckClient;
 
 public sealed record ConnectionProfile(string Id, string Name, string? Host, int Port = 5050)
 {
+    public BleServiceIdentifiers BleIdentifiers { get; init; } = new();
+    public string? ExpectedGatewayId { get; init; }
+
+    // One installation identity shared by all BLE/TCP profiles; never a hardware MAC address.
+    public static string DeviceId
+    {
+        get
+        {
+            const string key = "device.installationId";
+            var id = Preferences.Default.Get<string?>(key, null);
+            if (id is null)
+            {
+                id = Guid.NewGuid().ToString("N");
+                Preferences.Default.Set(key, id);
+            }
+            return id;
+        }
+    }
+
     private const string ProfilesKey = "connections.profiles";
 
     [JsonIgnore] public bool IsTcp => Host is not null;

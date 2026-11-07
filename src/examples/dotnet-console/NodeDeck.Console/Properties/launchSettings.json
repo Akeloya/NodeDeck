@@ -19,6 +19,14 @@
     "NodeDeck.Console - TCP + Bluetooth LE (JSON)": {
       "commandName": "Project",
       "commandLineArgs": "--settings Settings/tcp.json Settings/bluetooth.json"
+    },
+    "NodeDeck.Console - Executor (JSON)": {
+      "commandName": "Project",
+      "commandLineArgs": "--gateway-settings Settings/gateway-executor.json"
+    },
+    "NodeDeck.Console - Node (JSON)": {
+      "commandName": "Project",
+      "commandLineArgs": "--gateway-settings Settings/gateway-node.json"
     }
   }
 }
